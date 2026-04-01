@@ -1,118 +1,152 @@
 # Promptfire
 
-`Promptfire` ist ein Obsidian-Plugin, das relevanten Arbeitskontext aus einem Vault sammelt, kompiliert und gezielt in externe KI-Workflows exportiert.
+`Promptfire` is an Obsidian plugin for compiling vault context into deterministic prompts for external AI tools.
 
-Der Kernnutzen ist schlicht: Statt einem Modell jedes Mal Stilregeln, Konventionen, Beispielnotizen und die aktuelle Note manuell zu erklären, erzeugt `Promptfire` diesen Kontext auf Knopfdruck.
+Instead of manually pasting style rules, note structure, metadata patterns, and the current note into ChatGPT, Claude, or local models, `Promptfire` builds that context for you from your vault and sends it to the output target you choose.
 
-## Status
+## What It Does
 
-Scaffold steht. Build, Manifest, Commands, Settings, Kontextsammlung und Preview-Modal sind angelegt. Die erste Produktspezifikation liegt in [docs/mvp-spec.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/mvp-spec.md), die Implementierung geht inzwischen deutlich darüber hinaus.
+- Compiles context from multiple vault sources into one reproducible prompt
+- Lets you control exactly what gets included, in what order, and under which budget
+- Exports the result to the clipboard, notes inside your vault, scratchpads, or deep links
+- Stays model-agnostic and local to Obsidian
 
-## Produktidee
+## Highlights
 
-- Lokales Obsidian-Plugin ohne externe API im MVP
-- Modellagnostischer Prompt-Export statt eingebautem Chat
-- Fokus auf deterministische, reproduzierbare Kontextpakete
-- Optimiert für Vault-Konventionen, nicht für allgemeine Wissenssuche
+- Multiple named profiles
+- Source definitions for:
+  - active note
+  - single file
+  - folder
+  - outgoing links
+  - backlinks
+  - search query
+- Section extractors:
+  - full note
+  - frontmatter only
+  - body only
+  - heading-filtered sections
+  - code blocks only
+- Regex include and exclude filters per source
+- Per-source priority and character budgets
+- Per-block budgets and global prompt budgets
+- Output formats:
+  - Markdown
+  - XML
+  - JSON
+- Output targets:
+  - clipboard
+  - new note
+  - append to note
+  - append to active note
+  - scratchpad note
+  - deep link
+- Interactive preview for:
+  - enabling and disabling sources
+  - reordering sources
+  - toggling blocks
+  - switching export format
+  - recompiling without recollecting
+  - saving preview state as a snapshot profile
+- Vault-native config via `.promptfire.json`
 
-## Aktueller Funktionsumfang
+## Commands
 
-- Mehrere Profile mit aktivem Standardprofil
 - `Promptfire: Run default output target for active profile`
 - `Promptfire: Preview context for active profile`
+- `Promptfire: Run default output target for selected profile`
+- `Promptfire: Preview context for selected profile`
 - `Promptfire: Switch active profile`
 - `Promptfire: Reload vault config`
 - `Promptfire: Export resolved settings to vault config`
-- Typisierte Source Definitions für:
-  - aktive Note
-  - einzelne Datei
-  - Ordner
-  - ausgehende Links
-  - Backlinks
-  - einfache Textsuche
-- Optionale vault-native Konfigurationsdatei unter `.promptfire.json`
-- Dynamische profilgebundene Commands für Default-Target und Preview
-- Output Targets für:
-  - Clipboard
-  - neue Note
-  - bestehende Note appenden
-  - aktive Note appenden
-  - Scratchpad-Note
-  - Deep Links zu externen Apps
-- Exportformate: Markdown, XML, JSON
-- Konfigurierbare Template Blocks mit Reihenfolge, Aktivierung, eigener Überschrift und eigenem Budget
-- Section Extractors pro Source:
-  - Full note
-  - Frontmatter only
-  - Body only
-  - Heading-filtered
-  - Code blocks only
-- Regex include/exclude pro Source
-- Priorität und Character-Budget pro Source Definition
-- Interaktive Preview mit:
-  - Quellen live ein-/ausschalten
-  - Reihenfolge ändern
-  - Blöcke einzeln aktivieren/deaktivieren
-  - Ausgabeformat wechseln
-  - Recompile ohne erneute Sammlung
-  - Snapshot-Profil aus der aktuellen Preview speichern
-- Template-Variablen und einfache `{{#if ...}}`-Bedingungen in Aufgaben- und Export-Templates
-- Deterministische Kürzung auf Source-, Block- und Gesamtbudget-Ebene
-- Hinweise auf fehlende oder übersprungene Quellen
+
+If profile commands are enabled, Promptfire also registers profile-specific commands.
 
 ## Search Query Syntax
 
-`search`-Quellen unterstützen jetzt feldbezogene, case-insensitive Abfragen:
+`search` sources support field-aware, case-insensitive queries.
 
-- Bare terms: durchsuchen Pfad, Dateiname, Text, Tags, Headings und Frontmatter
+Supported patterns:
+
+- bare terms search path, filename, text, tags, headings, and frontmatter
 - `path:guides`
 - `name:daily`
 - `text:"prompt engineering"`
 - `tag:ai`
 - `heading:conventions`
 - `fm:status=active`
-- Negation mit `-`, z. B. `-name:draft`
+- negation with `-`, for example `-name:draft`
 
-Beispiel:
+Example:
 
 ```text
 tag:ai path:guides "prompt engineering" -name:draft fm:status=active
 ```
 
-## Vault Config
+## Installation
 
-Wenn `Enable vault config` aktiv ist, lädt Promptfire zusätzliche Settings aus einer Datei im Vault, standardmäßig `.promptfire.json`. Die Datei kann per Command oder im Settings-Tab aus dem aktuellen Stand exportiert werden.
+### Manual
 
-## Entwicklung
+1. Build the plugin:
 
 ```bash
 npm install
 npm run build
 ```
 
-Für den Entwicklungsmodus:
+2. Copy these files into your vault:
+
+- `manifest.json`
+- `main.js`
+- `styles.css`
+
+Target directory:
+
+```text
+<vault>/.obsidian/plugins/promptfire/
+```
+
+3. Enable `Promptfire` in Obsidian community plugins.
+
+## Vault Config
+
+If `Enable vault config` is on, Promptfire loads additional settings from a vault file, by default:
+
+```text
+.promptfire.json
+```
+
+You can also export the current resolved settings back into that file from the command palette or plugin settings.
+
+## Development
+
+```bash
+npm install
+npm run build
+```
+
+Watch mode:
 
 ```bash
 npm run dev
 ```
 
-## Lokales Testen in Obsidian
+## Release Notes
 
-1. `npm run build`
-2. `manifest.json`, `main.js` und `styles.css` nach `<vault>/.obsidian/plugins/promptfire/` kopieren
-3. Plugin in Obsidian aktivieren
-4. In den Plugin-Settings ein Profil, Sources, Targets und Budgets konfigurieren
-5. `Run default output target` oder `Preview context` ausführen
+- Changelog: [CHANGELOG.md](/home/luca/studio/software/obsidian-plugins/promptfire/CHANGELOG.md)
+- `0.1.0` release notes: [docs/releases/0.1.0.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases/0.1.0.md)
 
-Der aktuelle Testvault liegt bei `~/notes`.
+## Status
 
-## Noch nicht im MVP
+Current release: `0.1.0`
 
-- Integrierte Modell-API
-- Automatische semantische Suche
-- Agentische Multi-Step-Workflows
-- Komplexe Profil- oder Teamverwaltung
+This version establishes the power-user core:
 
-## Nächster Schritt
+- profile-based prompt compilation
+- deterministic budgeting
+- configurable extraction and output targets
+- interactive preview and snapshot workflows
 
-Das Plugin gegen den Testvault schärfen: echte Profile für `~/notes` anlegen, Output Targets in realen Workflows prüfen und danach feinere Query-DSLs oder modellspezifische Presets ergänzen.
+## License
+
+MIT
