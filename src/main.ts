@@ -4,15 +4,20 @@ import { loadVaultConfig, writeVaultConfig, type VaultConfigStatus } from "./con
 import { assemblePrompt } from "./context/assembler";
 import { collectContext } from "./context/collector";
 import type {
+  CollectedContext,
+  PromptBuildOverrides,
   PromptBuildResult,
+  PromptExportFormat,
+  PromptfireOutputTarget,
   PromptfireProfile,
   PromptfireSourceDefinition,
   PromptfireTemplateBlock,
   TemplateBlockId,
 } from "./context/types";
-import { copyTextToClipboard } from "./services/clipboard";
+import { executeOutputTarget } from "./services/output-targets";
 import {
   createDefaultProfile,
+  createSourceDefinition,
   duplicateProfile,
   normalizeSettings,
   PromptfireSettingTab,
@@ -36,9 +41,9 @@ export default class PromptfirePlugin extends Plugin {
 
     this.addCommand({
       id: "copy-context",
-      name: "Copy context for active profile",
+      name: "Run default output target for active profile",
       callback: () => {
-        void this.copyContext();
+        void this.runDefaultOutputTarget();
       },
     });
 
@@ -52,10 +57,10 @@ export default class PromptfirePlugin extends Plugin {
 
     this.addCommand({
       id: "copy-context-for-selected-profile",
-      name: "Copy context for selected profile",
+      name: "Run default output target for selected profile",
       callback: () => {
         this.openProfilePicker((profile) => {
-          void this.copyContext(profile.id);
+          void this.runDefaultOutputTarget(profile.id);
         });
       },
     });
@@ -157,6 +162,10 @@ export default class PromptfirePlugin extends Plugin {
     return this.getProfileById(profileId)?.templateBlocks.find((block) => block.id === blockId);
   }
 
+  getOutputTarget(profileId: string, outputTargetId: string): PromptfireOutputTarget | undefined {
+    return this.getProfileById(profileId)?.outputTargets.find((target) => target.id === outputTargetId);
+  }
+
   getVaultConfigStatusText(): string {
     if (!this.settings.enableVaultConfig) {
       return `Vault config is disabled. Current path: ${this.settings.vaultConfigPath}`;
@@ -220,8 +229,7 @@ export default class PromptfirePlugin extends Plugin {
     this.syncRibbonIcon();
     this.syncProfileCommands();
 
-    const statusText = this.getVaultConfigStatusText();
-    new Notice(statusText);
+    new Notice(this.getVaultConfigStatusText());
   }
 
   async exportSettingsToVaultConfig(): Promise<void> {
@@ -240,9 +248,9 @@ export default class PromptfirePlugin extends Plugin {
     const activeProfile = this.getActiveProfile();
     this.ribbonIconEl = this.addRibbonIcon(
       "flame",
-      `Promptfire: Copy context (${activeProfile.name})`,
+      `Promptfire: Run default output target (${activeProfile.name})`,
       () => {
-        void this.copyContext();
+        void this.runDefaultOutputTarget();
       },
     );
   }
@@ -264,14 +272,14 @@ export default class PromptfirePlugin extends Plugin {
     }
 
     for (const profile of this.settings.profiles) {
-      const copyCommandId = `copy-context-${profile.id}`;
+      const runCommandId = `run-default-output-target-${profile.id}`;
       const previewCommandId = `preview-context-${profile.id}`;
 
       this.addCommand({
-        id: copyCommandId,
-        name: `Copy context: ${profile.name}`,
+        id: runCommandId,
+        name: `Run default output target: ${profile.name}`,
         callback: () => {
-          void this.copyContext(profile.id);
+          void this.runDefaultOutputTarget(profile.id);
         },
       });
       this.addCommand({
@@ -282,7 +290,7 @@ export default class PromptfirePlugin extends Plugin {
         },
       });
 
-      this.registeredProfileCommandIds.push(copyCommandId, previewCommandId);
+      this.registeredProfileCommandIds.push(runCommandId, previewCommandId);
     }
   }
 
@@ -318,43 +326,54 @@ export default class PromptfirePlugin extends Plugin {
     });
   }
 
-  private async copyContext(profileId?: string): Promise<void> {
-    const result = await this.buildPromptResult(profileId);
+  private getDefaultOutputTarget(profile: PromptfireProfile): PromptfireOutputTarget {
+    const defaultTarget = profile.outputTargets.find(
+      (target) => target.id === profile.defaultOutputTargetId && target.enabled,
+    );
 
-    if (!result) {
-      return;
+    if (defaultTarget) {
+      return defaultTarget;
     }
 
-    await this.copyPrompt(result);
-  }
+    const fallbackTarget = profile.outputTargets.find((target) => target.enabled);
 
-  private async previewContext(profileId?: string): Promise<void> {
-    const result = await this.buildPromptResult(profileId);
-
-    if (!result) {
-      return;
+    if (fallbackTarget) {
+      return fallbackTarget;
     }
 
-    new PromptfirePreviewModal(this.app, result, async () => this.copyPrompt(result)).open();
+    return profile.outputTargets[0] ?? {
+      appendSeparator: "\n\n",
+      enabled: true,
+      format: "markdown",
+      id: "clipboard-fallback",
+      label: "Clipboard",
+      openAfterWrite: false,
+      pathTemplate: "",
+      type: "clipboard",
+      urlTemplate: "",
+    };
   }
 
-  private async copyPrompt(result: PromptBuildResult): Promise<boolean> {
-    try {
-      await copyTextToClipboard(result.prompt);
-      new Notice(this.buildCopyNotice(result));
-      return true;
-    } catch (error) {
-      console.error("Promptfire clipboard error", error);
-      new Notice("Promptfire could not copy to the clipboard. Use Preview to copy manually.");
-      return false;
-    }
+  private buildPromptResult(
+    profile: PromptfireProfile,
+    context: CollectedContext,
+    overrides?: PromptBuildOverrides,
+    outputFormat?: PromptExportFormat,
+  ): PromptBuildResult {
+    return assemblePrompt(context, profile, {
+      ...overrides,
+      outputFormat: outputFormat ?? overrides?.outputFormat ?? "markdown",
+    });
   }
 
-  private async buildPromptResult(profileId?: string): Promise<PromptBuildResult | null> {
+  private async collectProfileContext(profileId?: string): Promise<{
+    context: CollectedContext;
+    profile: PromptfireProfile;
+  } | null> {
     const profile = profileId ? this.getProfileById(profileId) : this.getActiveProfile();
 
     if (!profile) {
-      new Notice(`Promptfire could not find the requested profile.`);
+      new Notice("Promptfire could not find the requested profile.");
       return null;
     }
 
@@ -365,22 +384,183 @@ export default class PromptfirePlugin extends Plugin {
       return null;
     }
 
-    const collectedContext = await collectContext(this.app, profile);
-    const result = assemblePrompt(collectedContext, profile);
+    const context = await collectContext(this.app, profile);
 
-    if (result.includedSources.length === 0) {
+    if (context.sources.length === 0) {
       new Notice(
         `Promptfire profile "${profile.name}" did not collect any usable context. Check its sources, filters, and template blocks.`,
       );
       return null;
     }
 
-    return result;
+    return {
+      context,
+      profile,
+    };
   }
 
-  private buildCopyNotice(result: PromptBuildResult): string {
+  private async runDefaultOutputTarget(profileId?: string): Promise<void> {
+    const collected = await this.collectProfileContext(profileId);
+
+    if (!collected) {
+      return;
+    }
+
+    const { context, profile } = collected;
+    const outputTarget = this.getDefaultOutputTarget(profile);
+    const result = this.buildPromptResult(profile, context, undefined, outputTarget.format);
+
+    if (!result.prompt.trim()) {
+      new Notice(`Promptfire compiled an empty prompt for profile "${profile.name}".`);
+      return;
+    }
+
+    try {
+      const message = await executeOutputTarget(this.app, profile, outputTarget, result, {
+        activeNotePath: context.activeNotePath,
+        now: new Date(),
+        outputTarget,
+        profile,
+        result,
+      });
+      new Notice(`${message} ${this.buildRunNotice(result, outputTarget)}`.trim());
+    } catch (error) {
+      console.error("Promptfire output target error", error);
+      new Notice(
+        error instanceof Error
+          ? `Promptfire could not execute "${outputTarget.label}": ${error.message}`
+          : `Promptfire could not execute "${outputTarget.label}".`,
+      );
+    }
+  }
+
+  private async previewContext(profileId?: string): Promise<void> {
+    const collected = await this.collectProfileContext(profileId);
+
+    if (!collected) {
+      return;
+    }
+
+    const { context, profile } = collected;
+    const defaultTarget = this.getDefaultOutputTarget(profile);
+    const initialResult = this.buildPromptResult(profile, context, undefined, defaultTarget.format);
+
+    new PromptfirePreviewModal(this.app, {
+      context,
+      initialProfile: profile,
+      initialResult,
+      outputTargets: profile.outputTargets.filter((target) => target.enabled),
+      compile: (overrides) => {
+        const target = profile.outputTargets.find((candidate) => candidate.id === profile.defaultOutputTargetId);
+        return this.buildPromptResult(
+          profile,
+          context,
+          overrides,
+          overrides.outputFormat ?? target?.format ?? defaultTarget.format,
+        );
+      },
+      executeOutputTarget: async (outputTargetId, overrides) => {
+        const target =
+          profile.outputTargets.find((candidate) => candidate.id === outputTargetId && candidate.enabled) ??
+          defaultTarget;
+        const result = this.buildPromptResult(
+          profile,
+          context,
+          overrides,
+          overrides.outputFormat ?? target.format,
+        );
+
+        if (!result.prompt.trim()) {
+          new Notice(`Promptfire compiled an empty prompt for profile "${profile.name}".`);
+          return false;
+        }
+
+        try {
+          const message = await executeOutputTarget(this.app, profile, target, result, {
+            activeNotePath: context.activeNotePath,
+            now: new Date(),
+            outputTarget: target,
+            profile,
+            result,
+          });
+          new Notice(`${message} ${this.buildRunNotice(result, target)}`.trim());
+          return true;
+        } catch (error) {
+          console.error("Promptfire preview output target error", error);
+          new Notice(
+            error instanceof Error
+              ? `Promptfire could not execute "${target.label}": ${error.message}`
+              : `Promptfire could not execute "${target.label}".`,
+          );
+          return false;
+        }
+      },
+      saveProfileSnapshot: async (name, overrides, outputTargetId) => {
+        await this.saveProfileSnapshot(profile, context, name, overrides, outputTargetId);
+      },
+    }).open();
+  }
+
+  private async saveProfileSnapshot(
+    baseProfile: PromptfireProfile,
+    context: CollectedContext,
+    name: string,
+    overrides: PromptBuildOverrides,
+    outputTargetId: string,
+  ): Promise<void> {
+    const snapshotProfile = duplicateProfile(baseProfile);
+    const enabledSourceIds = new Set(overrides.enabledSourceIds ?? context.sources.map((source) => source.id));
+    const manualOrder = overrides.reorderedSourceIds ?? context.sources.map((source) => source.id);
+    const orderedSources = manualOrder
+      .map((sourceId) => context.sources.find((source) => source.id === sourceId))
+      .filter((source): source is CollectedContext["sources"][number] => Boolean(source))
+      .filter((source) => enabledSourceIds.has(source.id));
+
+    if (orderedSources.length === 0) {
+      new Notice("Promptfire could not save a snapshot profile with zero enabled sources.");
+      return;
+    }
+
+    snapshotProfile.id = createDefaultProfile().id;
+    snapshotProfile.name = name.trim() || `${baseProfile.name} Snapshot`;
+    snapshotProfile.defaultOutputTargetId = outputTargetId;
+    snapshotProfile.templateBlocks = snapshotProfile.templateBlocks.map((block) => ({
+      ...block,
+      enabled: overrides.enabledBlockIds
+        ? overrides.enabledBlockIds.includes(block.id)
+        : block.enabled,
+    }));
+    snapshotProfile.sourceDefinitions = orderedSources.map((source, index) => {
+      const sourceDefinition = this.getSourceDefinition(baseProfile.id, source.sourceDefinitionId);
+      const snapshotSource = createSourceDefinition("file");
+      snapshotSource.id = createSourceDefinition("file").id;
+      snapshotSource.extractMode = sourceDefinition?.extractMode ?? snapshotSource.extractMode;
+      snapshotSource.headingFilters = [...(sourceDefinition?.headingFilters ?? [])];
+      snapshotSource.label = source.title;
+      snapshotSource.maxCharacters = sourceDefinition?.maxCharacters;
+      snapshotSource.path = source.path;
+      snapshotSource.priority = orderedSources.length - index;
+      snapshotSource.regexExclude = sourceDefinition?.regexExclude ?? "";
+      snapshotSource.regexInclude = sourceDefinition?.regexInclude ?? "";
+      snapshotSource.section = source.section;
+      return snapshotSource;
+    });
+
+    const selectedTarget = snapshotProfile.outputTargets.find((target) => target.id === outputTargetId);
+
+    if (selectedTarget && overrides.outputFormat) {
+      selectedTarget.format = overrides.outputFormat;
+    }
+
+    this.settings.profiles.push(snapshotProfile);
+    this.settings.activeProfileId = snapshotProfile.id;
+    await this.saveSettings();
+    new Notice(`Promptfire saved preview snapshot as profile "${snapshotProfile.name}".`);
+  }
+
+  private buildRunNotice(result: PromptBuildResult, outputTarget: PromptfireOutputTarget): string {
     const issueSuffix = result.issues.length > 0 ? ` ${result.issues.length} issue(s) noted.` : "";
 
-    return `Promptfire copied ${result.characterCount.toLocaleString()} characters from ${result.includedSources.length} source(s) using profile "${result.profileName}".${issueSuffix}`;
+    return `Profile "${result.profileName}" produced ${result.characterCount.toLocaleString()} characters from ${result.includedSources.length} source(s) in ${result.outputFormat} via "${outputTarget.label}".${issueSuffix}`;
   }
 }

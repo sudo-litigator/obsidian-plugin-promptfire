@@ -1,6 +1,6 @@
 import { App, MarkdownView, TFile, TFolder } from "obsidian";
 
-import type { PromptfireProfile, PromptfireSourceDefinition } from "./types";
+import type { PromptfireProfile, PromptfireSourceDefinition, SourceExtractMode } from "./types";
 import {
   normalizeSearchIndexEntry,
   parseSearchQuery,
@@ -11,6 +11,12 @@ import type { CollectedContext, ContextIssue, PromptSource } from "./types";
 
 const CODE_BLOCK_PLACEHOLDER = "[code block omitted by Promptfire]";
 const FRONTMATTER_PATTERN = /^---\n[\s\S]*?\n---\n?/;
+const HEADING_PATTERN = /^(#{1,6})\s+(.+)$/gm;
+
+interface CompiledSourcePatterns {
+  excludePattern: RegExp | null;
+  includePattern: RegExp | null;
+}
 
 function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/g, "\n");
@@ -55,24 +61,201 @@ function splitMarkdown(rawContent: string): { body: string; frontmatter: string 
   };
 }
 
-function shapeMarkdownContent(rawContent: string, profile: PromptfireProfile): string {
-  const { body, frontmatter } = splitMarkdown(rawContent);
+function extractCodeBlocks(content: string): string {
+  const matches = content.match(/```[\s\S]*?```/g) ?? [];
+  return matches.join("\n\n").trim();
+}
+
+function extractSectionsByHeading(body: string, headingFilters: string[]): string {
+  const filters = headingFilters.map((filter) => filter.trim().toLowerCase()).filter(Boolean);
+
+  if (filters.length === 0) {
+    return body.trim();
+  }
+
+  const headings = Array.from(body.matchAll(HEADING_PATTERN)).map((match) => ({
+    index: match.index ?? 0,
+    level: match[1]?.length ?? 0,
+    title: match[2]?.trim() ?? "",
+  }));
+
+  if (headings.length === 0) {
+    return "";
+  }
+
+  const sections: string[] = [];
+
+  for (const [index, heading] of headings.entries()) {
+    if (!heading.title) {
+      continue;
+    }
+
+    const matchesFilter = filters.some((filter) => heading.title.toLowerCase().includes(filter));
+
+    if (!matchesFilter) {
+      continue;
+    }
+
+    let endIndex = body.length;
+
+    for (let candidateIndex = index + 1; candidateIndex < headings.length; candidateIndex += 1) {
+      const candidate = headings[candidateIndex];
+
+      if (!candidate) {
+        continue;
+      }
+
+      if (candidate.level <= heading.level) {
+        endIndex = candidate.index;
+        break;
+      }
+    }
+
+    const section = body.slice(heading.index, endIndex).trim();
+
+    if (section) {
+      sections.push(section);
+    }
+  }
+
+  return sections.join("\n\n").trim();
+}
+
+function applyExtractMode(
+  rawContent: string,
+  profile: PromptfireProfile,
+  sourceDefinition: PromptfireSourceDefinition,
+  treatAsSelection = false,
+): string {
+  const normalized = normalizeLineEndings(rawContent).trim();
+
+  if (treatAsSelection) {
+    if (sourceDefinition.extractMode === "frontmatter-only") {
+      return "";
+    }
+
+    if (sourceDefinition.extractMode === "code-blocks") {
+      return extractCodeBlocks(normalized);
+    }
+
+    if (sourceDefinition.extractMode === "heading-filtered") {
+      return extractSectionsByHeading(normalized, sourceDefinition.headingFilters);
+    }
+
+    return profile.stripCodeBlocks ? stripFencedCodeBlocks(normalized).trim() : normalized;
+  }
+
+  const { body, frontmatter } = splitMarkdown(normalized);
+  const safeBody = sourceDefinition.extractMode === "code-blocks" ? body : profile.stripCodeBlocks
+    ? stripFencedCodeBlocks(body).trim()
+    : body;
+
   const parts: string[] = [];
+
+  if (sourceDefinition.extractMode === "frontmatter-only") {
+    return profile.includeFrontmatter ? (frontmatter ?? "") : "";
+  }
+
+  if (sourceDefinition.extractMode === "body-only") {
+    return profile.includeBody ? safeBody.trim() : "";
+  }
+
+  if (sourceDefinition.extractMode === "heading-filtered") {
+    return profile.includeBody
+      ? extractSectionsByHeading(safeBody, sourceDefinition.headingFilters)
+      : "";
+  }
+
+  if (sourceDefinition.extractMode === "code-blocks") {
+    return profile.includeBody ? extractCodeBlocks(body) : "";
+  }
 
   if (profile.includeFrontmatter && frontmatter) {
     parts.push(frontmatter);
   }
 
-  if (profile.includeBody && body) {
-    parts.push(profile.stripCodeBlocks ? stripFencedCodeBlocks(body).trim() : body);
+  if (profile.includeBody && safeBody) {
+    parts.push(safeBody);
   }
 
   return parts.join("\n\n").trim();
 }
 
-function shapeSelectionContent(rawContent: string, profile: PromptfireProfile): string {
-  const normalized = normalizeLineEndings(rawContent).trim();
-  return profile.stripCodeBlocks ? stripFencedCodeBlocks(normalized).trim() : normalized;
+function parseRegexPattern(pattern: string): { flags: string; source: string } {
+  const trimmed = pattern.trim();
+  const literalMatch = trimmed.match(/^\/([\s\S]+)\/([a-z]*)$/i);
+
+  if (literalMatch) {
+    return {
+      flags: literalMatch[2] ?? "",
+      source: literalMatch[1] ?? "",
+    };
+  }
+
+  return {
+    flags: "",
+    source: trimmed,
+  };
+}
+
+function compilePattern(
+  sourceDefinition: PromptfireSourceDefinition,
+  pattern: string | undefined,
+  kind: "regex-include" | "regex-exclude",
+  issues: ContextIssue[],
+): RegExp | null {
+  const trimmed = pattern?.trim() ?? "";
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = parseRegexPattern(trimmed);
+    const flags = parsed.flags.includes("g") ? parsed.flags : `${parsed.flags}g`;
+    return new RegExp(parsed.source, flags);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    issues.push(
+      buildIssue(
+        sourceDefinition,
+        "(regex)",
+        kind,
+        `Promptfire could not compile ${kind.replace("-", " ")} for source "${sourceDefinition.label}": ${message}`,
+      ),
+    );
+    return null;
+  }
+}
+
+function clonePattern(pattern: RegExp): RegExp {
+  return new RegExp(pattern.source, pattern.flags);
+}
+
+function applyRegexPatterns(
+  content: string,
+  sourceDefinition: PromptfireSourceDefinition,
+  patterns: CompiledSourcePatterns,
+): string {
+  let nextContent = content;
+
+  if (patterns.includePattern) {
+    const includeMatches = Array.from(nextContent.matchAll(clonePattern(patterns.includePattern)))
+      .map((match) => match[0])
+      .filter(Boolean);
+
+    nextContent = includeMatches.join("\n").trim();
+  }
+
+  if (patterns.excludePattern && nextContent) {
+    nextContent = nextContent.replace(clonePattern(patterns.excludePattern), "").trim();
+  }
+
+  if (sourceDefinition.extractMode !== "code-blocks") {
+    nextContent = nextContent.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  return nextContent;
 }
 
 function getSourceTitle(sourceDefinition: PromptfireSourceDefinition, file: TFile | null): string {
@@ -97,11 +280,33 @@ function getActiveSelection(app: App, file: TFile): string {
   return markdownView.editor?.getSelection().trim() ?? "";
 }
 
+function createPromptSource(
+  sourceDefinition: PromptfireSourceDefinition,
+  file: TFile,
+  content: string,
+  originalCharacterCount: number,
+): PromptSource {
+  return {
+    content,
+    id: `${sourceDefinition.id}::${file.path}`,
+    kind: sourceDefinition.type,
+    originalCharacterCount,
+    path: file.path,
+    priority: sourceDefinition.priority,
+    section: sourceDefinition.section,
+    sourceDefinitionId: sourceDefinition.id,
+    sourceDefinitionLabel: sourceDefinition.label,
+    sourceDefinitionType: sourceDefinition.type,
+    title: getSourceTitle(sourceDefinition, file),
+  };
+}
+
 async function buildPromptSourceFromFile(
   app: App,
   file: TFile,
   sourceDefinition: PromptfireSourceDefinition,
   profile: PromptfireProfile,
+  patterns: CompiledSourcePatterns,
 ): Promise<{ issue: ContextIssue | null; source: PromptSource | null }> {
   if (file.extension !== "md") {
     return {
@@ -115,7 +320,10 @@ async function buildPromptSourceFromFile(
     };
   }
 
-  const shapedContent = shapeMarkdownContent(await app.vault.cachedRead(file), profile);
+  const rawContent = await app.vault.cachedRead(file);
+  const extractedContent = applyExtractMode(rawContent, profile, sourceDefinition);
+  const originalCharacterCount = extractedContent.length;
+  const shapedContent = applyRegexPatterns(extractedContent, sourceDefinition, patterns);
 
   if (!shapedContent) {
     return {
@@ -123,7 +331,7 @@ async function buildPromptSourceFromFile(
         sourceDefinition,
         file.path,
         "empty-after-filtering",
-        `Promptfire skipped "${file.path}" because the current content filters produced an empty result.`,
+        `Promptfire skipped "${file.path}" because its extractor and regex filters produced an empty result.`,
       ),
       source: null,
     };
@@ -131,17 +339,7 @@ async function buildPromptSourceFromFile(
 
   return {
     issue: null,
-    source: {
-      content: shapedContent,
-      kind: sourceDefinition.type,
-      originalCharacterCount: shapedContent.length,
-      path: file.path,
-      section: sourceDefinition.section,
-      sourceDefinitionId: sourceDefinition.id,
-      sourceDefinitionLabel: sourceDefinition.label,
-      sourceDefinitionType: sourceDefinition.type,
-      title: getSourceTitle(sourceDefinition, file),
-    },
+    source: createPromptSource(sourceDefinition, file, shapedContent, originalCharacterCount),
   };
 }
 
@@ -249,11 +447,7 @@ function getFrontmatterIndex(file: TFile, app: App): Record<string, string[]> {
   return index;
 }
 
-function buildSearchIndexEntry(
-  app: App,
-  file: TFile,
-  text: string,
-): SearchIndexEntry {
+function buildSearchIndexEntry(app: App, file: TFile, text: string): SearchIndexEntry {
   const fileCache = app.metadataCache.getFileCache(file);
 
   return normalizeSearchIndexEntry({
@@ -289,8 +483,9 @@ async function getSearchMatches(
   for (const file of app.vault
     .getMarkdownFiles()
     .sort((left, right) => left.path.localeCompare(right.path))) {
-    const shapedContent = shapeMarkdownContent(await app.vault.cachedRead(file), profile);
-    const searchEntry = buildSearchIndexEntry(app, file, shapedContent);
+    const rawContent = await app.vault.cachedRead(file);
+    const extractedContent = applyExtractMode(rawContent, profile, sourceDefinition);
+    const searchEntry = buildSearchIndexEntry(app, file, extractedContent);
     const score = scoreSearchIndexEntry(searchEntry, clauses);
 
     if (score !== null) {
@@ -301,6 +496,56 @@ async function getSearchMatches(
   return matches
     .sort((left, right) => right.score - left.score || left.file.path.localeCompare(right.file.path))
     .map((match) => match.file);
+}
+
+function buildSelectionSource(
+  app: App,
+  file: TFile,
+  sourceDefinition: PromptfireSourceDefinition,
+  profile: PromptfireProfile,
+  selectedText: string,
+  patterns: CompiledSourcePatterns,
+): { issue: ContextIssue | null; source: PromptSource | null } {
+  const extractedContent = applyExtractMode(selectedText, profile, sourceDefinition, true);
+  const originalCharacterCount = extractedContent.length;
+  const shapedContent = applyRegexPatterns(extractedContent, sourceDefinition, patterns);
+
+  if (!shapedContent) {
+    return {
+      issue: buildIssue(
+        sourceDefinition,
+        file.path,
+        "empty-after-filtering",
+        `Promptfire skipped the current selection in "${file.path}" because its extractor and regex filters produced an empty result.`,
+      ),
+      source: null,
+    };
+  }
+
+  return {
+    issue: null,
+    source: createPromptSource(sourceDefinition, file, shapedContent, originalCharacterCount),
+  };
+}
+
+function preparePatterns(
+  sourceDefinition: PromptfireSourceDefinition,
+  issues: ContextIssue[],
+): CompiledSourcePatterns {
+  return {
+    excludePattern: compilePattern(
+      sourceDefinition,
+      sourceDefinition.regexExclude,
+      "regex-exclude",
+      issues,
+    ),
+    includePattern: compilePattern(
+      sourceDefinition,
+      sourceDefinition.regexInclude,
+      "regex-include",
+      issues,
+    ),
+  };
 }
 
 export async function collectContext(
@@ -358,6 +603,8 @@ export async function collectContext(
       continue;
     }
 
+    const patterns = preparePatterns(sourceDefinition, issues);
+
     if (sourceDefinition.type === "active-note") {
       const file = ensureActiveMarkdownFile(sourceDefinition);
 
@@ -366,12 +613,11 @@ export async function collectContext(
       }
 
       const selectedText = getActiveSelection(app, file);
-      let noteContent = "";
+      let issue: ContextIssue | null = null;
+      let source: PromptSource | null = null;
 
       if (sourceDefinition.noteMode === "selection") {
-        noteContent = shapeSelectionContent(selectedText, profile);
-
-        if (!noteContent) {
+        if (!selectedText) {
           issues.push(
             buildIssue(
               sourceDefinition,
@@ -382,36 +628,43 @@ export async function collectContext(
           );
           continue;
         }
+
+        ({ issue, source } = buildSelectionSource(
+          app,
+          file,
+          sourceDefinition,
+          profile,
+          selectedText,
+          patterns,
+        ));
       } else if (sourceDefinition.noteMode === "selection-fallback-full" && selectedText) {
-        noteContent = shapeSelectionContent(selectedText, profile);
+        ({ issue, source } = buildSelectionSource(
+          app,
+          file,
+          sourceDefinition,
+          profile,
+          selectedText,
+          patterns,
+        ));
       } else {
-        noteContent = shapeMarkdownContent(await app.vault.cachedRead(file), profile);
+        ({ issue, source } = await buildPromptSourceFromFile(
+          app,
+          file,
+          sourceDefinition,
+          profile,
+          patterns,
+        ));
       }
 
-      if (!noteContent) {
-        issues.push(
-          buildIssue(
-            sourceDefinition,
-            file.path,
-            "empty-after-filtering",
-            `Promptfire skipped "${file.path}" because the current content filters produced an empty result.`,
-          ),
-        );
-        continue;
+      if (issue) {
+        issues.push(issue);
       }
 
-      sources.push({
-        content: noteContent,
-        kind: sourceDefinition.type,
-        originalCharacterCount: noteContent.length,
-        path: file.path,
-        section: sourceDefinition.section,
-        sourceDefinitionId: sourceDefinition.id,
-        sourceDefinitionLabel: sourceDefinition.label,
-        sourceDefinitionType: sourceDefinition.type,
-        title: sourceDefinition.label,
-      });
-      seenPaths.add(file.path);
+      if (source) {
+        sources.push(source);
+        seenPaths.add(source.path);
+      }
+
       continue;
     }
 
@@ -448,7 +701,13 @@ export async function collectContext(
         continue;
       }
 
-      const { issue, source } = await buildPromptSourceFromFile(app, file, sourceDefinition, profile);
+      const { issue, source } = await buildPromptSourceFromFile(
+        app,
+        file,
+        sourceDefinition,
+        profile,
+        patterns,
+      );
 
       if (issue) {
         issues.push(issue);
@@ -508,7 +767,13 @@ export async function collectContext(
       }
 
       for (const file of limited.items) {
-        const { issue, source } = await buildPromptSourceFromFile(app, file, sourceDefinition, profile);
+        const { issue, source } = await buildPromptSourceFromFile(
+          app,
+          file,
+          sourceDefinition,
+          profile,
+          patterns,
+        );
 
         if (issue) {
           issues.push(issue);
@@ -556,6 +821,7 @@ export async function collectContext(
           linkedFile,
           sourceDefinition,
           profile,
+          patterns,
         );
 
         if (issue) {
@@ -604,7 +870,13 @@ export async function collectContext(
       }
 
       for (const match of limited.items) {
-        const { issue, source } = await buildPromptSourceFromFile(app, match, sourceDefinition, profile);
+        const { issue, source } = await buildPromptSourceFromFile(
+          app,
+          match,
+          sourceDefinition,
+          profile,
+          patterns,
+        );
 
         if (issue) {
           issues.push(issue);
@@ -618,7 +890,17 @@ export async function collectContext(
     }
   }
 
+  let activeNotePath: string | null = null;
+  const resolvedActiveMarkdownFile = activeMarkdownFile as TFile | null;
+
+  if (resolvedActiveMarkdownFile) {
+    activeNotePath = resolvedActiveMarkdownFile.path;
+  } else if (activeFile instanceof TFile && activeFile.extension === "md") {
+    activeNotePath = activeFile.path;
+  }
+
   return {
+    activeNotePath,
     issues,
     profileId: profile.id,
     profileName: profile.name,

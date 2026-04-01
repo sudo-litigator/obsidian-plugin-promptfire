@@ -3,10 +3,14 @@ import { PluginSettingTab, Setting } from "obsidian";
 import type PromptfirePlugin from "./main";
 import type {
   ActiveNoteMode,
+  OutputTargetType,
   PromptSectionKind,
+  PromptExportFormat,
+  PromptfireOutputTarget,
   PromptfireProfile,
   PromptfireSourceDefinition,
   PromptfireTemplateBlock,
+  SourceExtractMode,
   SourceDefinitionType,
   TemplateBlockId,
 } from "./context/types";
@@ -15,6 +19,8 @@ export const MIN_OUTPUT_CHARACTERS = 2_000;
 export const MAX_OUTPUT_CHARACTERS = 100_000;
 export const MIN_SOURCE_ITEMS = 0;
 export const MAX_SOURCE_ITEMS = 50;
+export const MIN_SOURCE_PRIORITY = -100;
+export const MAX_SOURCE_PRIORITY = 100;
 
 export interface PromptfireSettings {
   activeProfileId: string;
@@ -120,6 +126,10 @@ export function clampSourceItems(value: number): number {
   return clamp(value, MIN_SOURCE_ITEMS, MAX_SOURCE_ITEMS);
 }
 
+export function clampSourcePriority(value: number): number {
+  return clamp(value, MIN_SOURCE_PRIORITY, MAX_SOURCE_PRIORITY);
+}
+
 function defaultSectionForSourceType(type: SourceDefinitionType): PromptSectionKind {
   if (type === "active-note") {
     return "current-note";
@@ -156,16 +166,80 @@ function sourceTypeSupportsNoteMode(type: SourceDefinitionType): boolean {
   return type === "active-note";
 }
 
+function sourceTypeSupportsExtraction(type: SourceDefinitionType): boolean {
+  return type === "active-note" || type === "file" || type === "folder" || type === "search";
+}
+
+function sourceTypeSupportsHeadingFilters(type: SourceDefinitionType): boolean {
+  return sourceTypeSupportsExtraction(type);
+}
+
+function sourceTypeSupportsRegexFilters(type: SourceDefinitionType): boolean {
+  return sourceTypeSupportsExtraction(type);
+}
+
+function createOutputTargetId(): string {
+  return createId("target");
+}
+
+function defaultOutputTargetPath(type: OutputTargetType): string {
+  if (type === "scratchpad-note") {
+    return "Promptfire/Scratchpad";
+  }
+
+  return "Promptfire/{{profile.name}}-{{date.local}}";
+}
+
+function defaultOutputTargetUrlTemplate(): string {
+  return "https://chat.openai.com/?prompt={{encodedPrompt}}";
+}
+
+export function createOutputTarget(
+  type: OutputTargetType,
+  label?: string,
+): PromptfireOutputTarget {
+  const defaultLabel =
+    type === "clipboard"
+      ? "Clipboard"
+      : type === "new-note"
+        ? "New note"
+        : type === "append-note"
+          ? "Append to note"
+        : type === "append-active-note"
+          ? "Append to active note"
+          : type === "scratchpad-note"
+            ? "Scratchpad"
+            : "Deep link";
+
+  return {
+    appendSeparator: "\n\n---\n\n",
+    enabled: true,
+    format: "markdown",
+    id: createOutputTargetId(),
+    label: label ?? defaultLabel,
+    openAfterWrite: false,
+    pathTemplate: defaultOutputTargetPath(type),
+    type,
+    urlTemplate: defaultOutputTargetUrlTemplate(),
+  };
+}
+
 export function createSourceDefinition(type: SourceDefinitionType): PromptfireSourceDefinition {
   return {
     enabled: true,
+    extractMode: "full",
+    headingFilters: [],
     id: createId("source"),
     label: defaultLabelForSourceType(type),
+    maxCharacters: undefined,
     maxItems: sourceTypeSupportsMaxItems(type) ? 5 : undefined,
     noteMode: sourceTypeSupportsNoteMode(type) ? "selection-fallback-full" : undefined,
     path: sourceTypeSupportsPath(type) ? "" : undefined,
+    priority: 0,
     query: sourceTypeSupportsQuery(type) ? "" : undefined,
     recursive: sourceTypeSupportsRecursion(type) ? true : undefined,
+    regexExclude: "",
+    regexInclude: "",
     section: defaultSectionForSourceType(type),
     type,
   };
@@ -176,11 +250,15 @@ function createDefaultTemplateBlocks(): PromptfireTemplateBlock[] {
     enabled: true,
     heading: TEMPLATE_BLOCK_HEADINGS[id],
     id,
+    maxCharacters: undefined,
   }));
 }
 
 export function createDefaultProfile(name = "Default"): PromptfireProfile {
+  const defaultOutputTarget = createOutputTarget("clipboard");
+
   return {
+    defaultOutputTargetId: defaultOutputTarget.id,
     excludeNotePaths: [],
     id: createId("profile"),
     includeBody: true,
@@ -188,6 +266,7 @@ export function createDefaultProfile(name = "Default"): PromptfireProfile {
     includeSourcePathLabels: true,
     maxOutputCharacters: 20_000,
     name,
+    outputTargets: [defaultOutputTarget],
     sourceDefinitions: [createSourceDefinition("active-note")],
     stripCodeBlocks: false,
     taskInstruction: DEFAULT_TASK_INSTRUCTION,
@@ -227,6 +306,10 @@ function normalizeTemplateBlocks(
       enabled: block.enabled ?? true,
       heading: block.heading?.trim() || TEMPLATE_BLOCK_HEADINGS[block.id],
       id: block.id,
+      maxCharacters:
+        typeof block.maxCharacters === "number" && block.maxCharacters > 0
+          ? clampOutputCharacters(block.maxCharacters)
+          : undefined,
     });
   }
 
@@ -236,11 +319,31 @@ function normalizeTemplateBlocks(
         enabled: true,
         heading: TEMPLATE_BLOCK_HEADINGS[id],
         id,
+        maxCharacters: undefined,
       });
     }
   }
 
   return normalizedBlocks;
+}
+
+function normalizeOutputTarget(
+  target: Partial<PromptfireOutputTarget> | undefined,
+): PromptfireOutputTarget {
+  const type = target?.type ?? "clipboard";
+  const defaults = createOutputTarget(type);
+
+  return {
+    appendSeparator: target?.appendSeparator ?? defaults.appendSeparator,
+    enabled: target?.enabled ?? defaults.enabled,
+    format: (target?.format ?? defaults.format) as PromptExportFormat,
+    id: target?.id || createOutputTargetId(),
+    label: target?.label?.trim() || defaults.label,
+    openAfterWrite: target?.openAfterWrite ?? defaults.openAfterWrite,
+    pathTemplate: target?.pathTemplate?.trim() || defaults.pathTemplate,
+    type,
+    urlTemplate: target?.urlTemplate?.trim() || defaults.urlTemplate,
+  };
 }
 
 function normalizeSourceDefinition(
@@ -251,8 +354,14 @@ function normalizeSourceDefinition(
 
   return {
     enabled: sourceDefinition?.enabled ?? defaults.enabled,
+    extractMode: (sourceDefinition?.extractMode ?? defaults.extractMode) as SourceExtractMode,
+    headingFilters: sanitizeLines(sourceDefinition?.headingFilters),
     id: sourceDefinition?.id || createId("source"),
     label: sourceDefinition?.label?.trim() || defaults.label,
+    maxCharacters:
+      typeof sourceDefinition?.maxCharacters === "number" && sourceDefinition.maxCharacters > 0
+        ? clampOutputCharacters(sourceDefinition.maxCharacters)
+        : undefined,
     maxItems: sourceTypeSupportsMaxItems(type)
       ? clampSourceItems(sourceDefinition?.maxItems ?? defaults.maxItems ?? 5)
       : undefined,
@@ -260,12 +369,15 @@ function normalizeSourceDefinition(
       ? sourceDefinition?.noteMode ?? defaults.noteMode
       : undefined,
     path: sourceTypeSupportsPath(type) ? sourceDefinition?.path?.trim() ?? defaults.path : undefined,
+    priority: clampSourcePriority(sourceDefinition?.priority ?? defaults.priority),
     query: sourceTypeSupportsQuery(type)
       ? sourceDefinition?.query?.trim() ?? defaults.query
       : undefined,
     recursive: sourceTypeSupportsRecursion(type)
       ? sourceDefinition?.recursive ?? defaults.recursive
       : undefined,
+    regexExclude: sourceDefinition?.regexExclude?.trim() ?? defaults.regexExclude,
+    regexInclude: sourceDefinition?.regexInclude?.trim() ?? defaults.regexInclude,
     section: sourceDefinition?.section ?? defaults.section,
     type,
   };
@@ -279,8 +391,19 @@ function normalizeProfile(
   const normalizedSources = (profile?.sourceDefinitions ?? []).map((sourceDefinition) =>
     normalizeSourceDefinition(sourceDefinition),
   );
+  const normalizedOutputTargets = (profile?.outputTargets ?? []).map((target) =>
+    normalizeOutputTarget(target),
+  );
+  const outputTargets =
+    normalizedOutputTargets.length > 0 ? normalizedOutputTargets : [...defaultProfile.outputTargets];
+  const defaultOutputTargetId = outputTargets.some(
+    (target) => target.id === profile?.defaultOutputTargetId,
+  )
+    ? (profile?.defaultOutputTargetId as string)
+    : outputTargets[0]?.id ?? defaultProfile.defaultOutputTargetId;
 
   return {
+    defaultOutputTargetId,
     excludeNotePaths: sanitizeLines(profile?.excludeNotePaths),
     id: profile?.id || createId("profile"),
     includeBody: profile?.includeBody ?? defaultProfile.includeBody,
@@ -291,6 +414,7 @@ function normalizeProfile(
       profile?.maxOutputCharacters ?? defaultProfile.maxOutputCharacters,
     ),
     name: profile?.name?.trim() || fallbackName,
+    outputTargets,
     sourceDefinitions:
       normalizedSources.length > 0 ? normalizedSources : [...defaultProfile.sourceDefinitions],
     stripCodeBlocks: profile?.stripCodeBlocks ?? defaultProfile.stripCodeBlocks,
@@ -474,6 +598,7 @@ export class PromptfireSettingTab extends PluginSettingTab {
     this.renderProfileControls(containerEl, activeProfile.id);
     this.renderProfileSettings(containerEl, activeProfile.id);
     this.renderSourceDefinitions(containerEl, activeProfile.id);
+    this.renderOutputTargets(containerEl, activeProfile.id);
     this.renderTemplateBlocks(containerEl, activeProfile.id);
     this.renderPluginUiSettings(containerEl);
   }
@@ -743,6 +868,271 @@ export class PromptfireSettingTab extends PluginSettingTab {
       );
   }
 
+  private renderOutputTargets(containerEl: HTMLElement, profileId: string): void {
+    const profile = this.plugin.getProfileById(profileId);
+
+    if (!profile) {
+      return;
+    }
+
+    containerEl.createEl("h3", { text: "Output Targets" });
+    containerEl.createEl("p", {
+      text: "Choose where the compiled prompt goes after preview or direct export.",
+    });
+
+    let outputTargetTypeToAdd: OutputTargetType = "clipboard";
+
+    new Setting(containerEl)
+      .setName("Default output target")
+      .setDesc("Used by the default copy/export flow for this profile.")
+      .addDropdown((dropdown) => {
+        for (const target of profile.outputTargets) {
+          dropdown.addOption(target.id, target.label);
+        }
+
+        dropdown.setValue(profile.defaultOutputTargetId).onChange(async (value) => {
+          const nextProfile = this.plugin.getProfileById(profileId);
+
+          if (!nextProfile) {
+            return;
+          }
+
+          nextProfile.defaultOutputTargetId = value;
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Add output target")
+      .setDesc("Append a new export destination to this profile.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("clipboard", "Clipboard")
+          .addOption("new-note", "New note")
+          .addOption("append-note", "Append to note")
+          .addOption("append-active-note", "Append to active note")
+          .addOption("scratchpad-note", "Scratchpad note")
+          .addOption("deep-link", "Deep link")
+          .setValue(outputTargetTypeToAdd)
+          .onChange((value) => {
+            outputTargetTypeToAdd = value as OutputTargetType;
+          }),
+      )
+      .addButton((button) =>
+        button.setButtonText("Add").onClick(async () => {
+          const nextProfile = this.plugin.getProfileById(profileId);
+
+          if (!nextProfile) {
+            return;
+          }
+
+          nextProfile.outputTargets.push(createOutputTarget(outputTargetTypeToAdd));
+          await this.plugin.saveSettings();
+          this.display();
+        }),
+      );
+
+    profile.outputTargets.forEach((target, index) => {
+      const targetContainer = containerEl.createDiv({ cls: "promptfire-settings__card" });
+      targetContainer.createEl("h4", { text: `${index + 1}. ${target.label}` });
+
+      new Setting(targetContainer)
+        .setName("Enabled")
+        .setDesc("Disable this target without deleting it.")
+        .addToggle((toggle) =>
+          toggle.setValue(target.enabled).onChange(async (value) => {
+            const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+            if (!nextTarget) {
+              return;
+            }
+
+            nextTarget.enabled = value;
+            await this.plugin.saveSettings();
+          }),
+        )
+        .addExtraButton((button) =>
+          button.setIcon("trash").setTooltip("Delete target").onClick(async () => {
+            const nextProfile = this.plugin.getProfileById(profileId);
+
+            if (!nextProfile) {
+              return;
+            }
+
+            nextProfile.outputTargets = nextProfile.outputTargets.filter((candidate) => candidate.id !== target.id);
+
+            if (nextProfile.outputTargets.length === 0) {
+              const fallbackTarget = createOutputTarget("clipboard");
+              nextProfile.outputTargets = [fallbackTarget];
+              nextProfile.defaultOutputTargetId = fallbackTarget.id;
+            } else if (nextProfile.defaultOutputTargetId === target.id) {
+              nextProfile.defaultOutputTargetId = nextProfile.outputTargets[0]?.id ?? nextProfile.defaultOutputTargetId;
+            }
+
+            await this.plugin.saveSettings();
+            this.display();
+          }),
+        );
+
+      new Setting(targetContainer)
+        .setName("Label")
+        .setDesc("Human-readable name used in commands and preview.")
+        .addText((text) =>
+          text.setValue(target.label).onChange(async (value) => {
+            const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+            if (!nextTarget) {
+              return;
+            }
+
+            nextTarget.label = value.trim() || nextTarget.label;
+            await this.plugin.saveSettings();
+          }),
+        );
+
+      new Setting(targetContainer)
+        .setName("Type")
+        .setDesc("Defines how Promptfire exports the compiled result.")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("clipboard", "Clipboard")
+            .addOption("new-note", "New note")
+            .addOption("append-note", "Append to note")
+            .addOption("append-active-note", "Append to active note")
+            .addOption("scratchpad-note", "Scratchpad note")
+            .addOption("deep-link", "Deep link")
+            .setValue(target.type)
+            .onChange(async (value) => {
+              const nextProfile = this.plugin.getProfileById(profileId);
+
+              if (!nextProfile) {
+                return;
+              }
+
+              const targetIndex = nextProfile.outputTargets.findIndex((candidate) => candidate.id === target.id);
+
+              if (targetIndex === -1) {
+                return;
+              }
+
+              const existingTarget = nextProfile.outputTargets[targetIndex];
+
+              if (!existingTarget) {
+                return;
+              }
+
+              nextProfile.outputTargets[targetIndex] = {
+                ...createOutputTarget(value as OutputTargetType),
+                id: existingTarget.id,
+                label: existingTarget.label,
+              };
+              await this.plugin.saveSettings();
+              this.display();
+            }),
+        );
+
+      new Setting(targetContainer)
+        .setName("Format")
+        .setDesc("Render format for this target.")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("markdown", "Markdown")
+            .addOption("xml", "XML")
+            .addOption("json", "JSON")
+            .setValue(target.format)
+            .onChange(async (value) => {
+              const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+              if (!nextTarget) {
+                return;
+              }
+
+              nextTarget.format = value as PromptExportFormat;
+              await this.plugin.saveSettings();
+            }),
+        );
+
+      if (
+        target.type === "new-note" ||
+        target.type === "scratchpad-note" ||
+        target.type === "append-note"
+      ) {
+        new Setting(targetContainer)
+          .setName("Path template")
+          .setDesc('Supports variables like `{{profile.name}}`, `{{date.local}}`, `{{activeNote.name}}`.')
+          .addText((text) =>
+            text.setValue(target.pathTemplate).onChange(async (value) => {
+              const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+              if (!nextTarget) {
+                return;
+              }
+
+              nextTarget.pathTemplate = value.trim();
+              await this.plugin.saveSettings();
+            }),
+          );
+
+        new Setting(targetContainer)
+          .setName("Open after write")
+          .setDesc("Open the written note immediately after exporting.")
+          .addToggle((toggle) =>
+            toggle.setValue(target.openAfterWrite).onChange(async (value) => {
+              const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+              if (!nextTarget) {
+                return;
+              }
+
+              nextTarget.openAfterWrite = value;
+              await this.plugin.saveSettings();
+            }),
+          );
+      }
+
+      if (target.type === "append-active-note" || target.type === "append-note") {
+        new Setting(targetContainer)
+          .setName("Append separator")
+          .setDesc("Inserted between the existing note content and the exported prompt.")
+          .addTextArea((text) => {
+            text.inputEl.rows = 3;
+            text.inputEl.cols = 48;
+            text.setValue(target.appendSeparator).onChange(async (value) => {
+              const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+              if (!nextTarget) {
+                return;
+              }
+
+              nextTarget.appendSeparator = value;
+              await this.plugin.saveSettings();
+            });
+          });
+      }
+
+      if (target.type === "deep-link") {
+        new Setting(targetContainer)
+          .setName("URL template")
+          .setDesc('Supports variables plus `{{encodedPrompt}}` for URL-safe prompt injection.')
+          .addTextArea((text) => {
+            text.inputEl.rows = 4;
+            text.inputEl.cols = 48;
+            text.setValue(target.urlTemplate).onChange(async (value) => {
+              const nextTarget = this.plugin.getOutputTarget(profileId, target.id);
+
+              if (!nextTarget) {
+                return;
+              }
+
+              nextTarget.urlTemplate = value.trim();
+              await this.plugin.saveSettings();
+            });
+          });
+      }
+    });
+  }
+
   private renderSourceDefinitions(containerEl: HTMLElement, profileId: string): void {
     const profile = this.plugin.getProfileById(profileId);
 
@@ -752,7 +1142,7 @@ export class PromptfireSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h3", { text: "Source Definitions" });
     containerEl.createEl("p", {
-      text: "Each source definition resolves one class of context. Order matters because Promptfire fills the prompt budget in source order.",
+      text: "Each source definition resolves one class of context. Order and priority both matter: manual preview order wins, then Promptfire sorts remaining sources by priority before budgeting.",
     });
 
     let sourceTypeToAdd: SourceDefinitionType = "file";
@@ -936,6 +1326,59 @@ export class PromptfireSettingTab extends PluginSettingTab {
             }),
         );
 
+      new Setting(sourceContainer)
+        .setName("Priority")
+        .setDesc(
+          `Higher values are considered first after any manual preview reordering. Range: ${MIN_SOURCE_PRIORITY} to ${MAX_SOURCE_PRIORITY}.`,
+        )
+        .addText((text) => {
+          text.inputEl.type = "number";
+          text.inputEl.min = String(MIN_SOURCE_PRIORITY);
+          text.inputEl.max = String(MAX_SOURCE_PRIORITY);
+          text.setValue(String(sourceDefinition.priority)).onChange(async (value) => {
+            const parsedValue = Number.parseInt(value, 10);
+
+            if (Number.isNaN(parsedValue)) {
+              return;
+            }
+
+            const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+            if (!nextSource) {
+              return;
+            }
+
+            const clampedValue = clampSourcePriority(parsedValue);
+            nextSource.priority = clampedValue;
+            text.setValue(String(clampedValue));
+            await this.plugin.saveSettings();
+          });
+        });
+
+      new Setting(sourceContainer)
+        .setName("Per-source character budget")
+        .setDesc("Optional hard cap for this source before block and global budgets apply.")
+        .addText((text) => {
+          text.inputEl.type = "number";
+          text.inputEl.min = "0";
+          text.setPlaceholder("Unlimited");
+          text.setValue(sourceDefinition.maxCharacters ? String(sourceDefinition.maxCharacters) : "")
+            .onChange(async (value) => {
+              const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+              if (!nextSource) {
+                return;
+              }
+
+              const parsedValue = Number.parseInt(value, 10);
+              nextSource.maxCharacters =
+                Number.isNaN(parsedValue) || parsedValue <= 0
+                  ? undefined
+                  : clampOutputCharacters(parsedValue);
+              await this.plugin.saveSettings();
+            });
+        });
+
       if (sourceTypeSupportsPath(sourceDefinition.type)) {
         new Setting(sourceContainer)
           .setName("Path")
@@ -1047,6 +1490,90 @@ export class PromptfireSettingTab extends PluginSettingTab {
               }),
           );
       }
+
+      if (sourceTypeSupportsExtraction(sourceDefinition.type)) {
+        new Setting(sourceContainer)
+          .setName("Section extractor")
+          .setDesc("Choose which part of the note this source should expose before budgeting.")
+          .addDropdown((dropdown) =>
+            dropdown
+              .addOption("full", "Full note")
+              .addOption("frontmatter-only", "Frontmatter only")
+              .addOption("body-only", "Body only")
+              .addOption("heading-filtered", "Only matching headings")
+              .addOption("code-blocks", "Code blocks only")
+              .setValue(sourceDefinition.extractMode)
+              .onChange(async (value) => {
+                const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+                if (!nextSource) {
+                  return;
+                }
+
+                nextSource.extractMode = value as SourceExtractMode;
+                await this.plugin.saveSettings();
+                this.display();
+              }),
+          );
+      }
+
+      if (sourceTypeSupportsHeadingFilters(sourceDefinition.type)) {
+        new Setting(sourceContainer)
+          .setName("Heading filters")
+          .setDesc("One heading fragment per line. Used by the heading-filtered extractor.")
+          .addTextArea((text) => {
+            text.inputEl.rows = 4;
+            text.inputEl.cols = 48;
+            text.setValue(sourceDefinition.headingFilters.join("\n")).onChange(async (value) => {
+              const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+              if (!nextSource) {
+                return;
+              }
+
+              nextSource.headingFilters = parseLines(value);
+              await this.plugin.saveSettings();
+            });
+          });
+      }
+
+      if (sourceTypeSupportsRegexFilters(sourceDefinition.type)) {
+        new Setting(sourceContainer)
+          .setName("Regex include")
+          .setDesc("Optional regex. Matching fragments are kept and joined before exclusion runs.")
+          .addTextArea((text) => {
+            text.inputEl.rows = 3;
+            text.inputEl.cols = 48;
+            text.setValue(sourceDefinition.regexInclude ?? "").onChange(async (value) => {
+              const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+              if (!nextSource) {
+                return;
+              }
+
+              nextSource.regexInclude = value.trim();
+              await this.plugin.saveSettings();
+            });
+          });
+
+        new Setting(sourceContainer)
+          .setName("Regex exclude")
+          .setDesc("Optional regex. Matching fragments are removed after extraction or include filtering.")
+          .addTextArea((text) => {
+            text.inputEl.rows = 3;
+            text.inputEl.cols = 48;
+            text.setValue(sourceDefinition.regexExclude ?? "").onChange(async (value) => {
+              const nextSource = this.plugin.getSourceDefinition(profileId, sourceDefinition.id);
+
+              if (!nextSource) {
+                return;
+              }
+
+              nextSource.regexExclude = value.trim();
+              await this.plugin.saveSettings();
+            });
+          });
+      }
     });
   }
 
@@ -1123,6 +1650,29 @@ export class PromptfireSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
         );
+
+      new Setting(blockContainer)
+        .setName("Per-block character budget")
+        .setDesc("Optional hard cap for this block before the global output budget applies.")
+        .addText((text) => {
+          text.inputEl.type = "number";
+          text.inputEl.min = "0";
+          text.setPlaceholder("Unlimited");
+          text.setValue(block.maxCharacters ? String(block.maxCharacters) : "").onChange(async (value) => {
+            const nextBlock = this.plugin.getTemplateBlock(profileId, block.id);
+
+            if (!nextBlock) {
+              return;
+            }
+
+            const parsedValue = Number.parseInt(value, 10);
+            nextBlock.maxCharacters =
+              Number.isNaN(parsedValue) || parsedValue <= 0
+                ? undefined
+                : clampOutputCharacters(parsedValue);
+            await this.plugin.saveSettings();
+          });
+        });
     });
   }
 

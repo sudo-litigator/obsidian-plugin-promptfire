@@ -1,6 +1,6 @@
 # Promptfire
 
-`Promptfire` ist ein Obsidian-Plugin, das den relevanten Arbeitskontext aus einem Vault sammelt und als strukturierten Prompt in die Zwischenablage kopiert.
+`Promptfire` ist ein Obsidian-Plugin, das relevanten Arbeitskontext aus einem Vault sammelt, kompiliert und gezielt in externe KI-Workflows exportiert.
 
 Der Kernnutzen ist schlicht: Statt einem Modell jedes Mal Stilregeln, Konventionen, Beispielnotizen und die aktuelle Note manuell zu erklären, erzeugt `Promptfire` diesen Kontext auf Knopfdruck.
 
@@ -18,7 +18,7 @@ Scaffold steht. Build, Manifest, Commands, Settings, Kontextsammlung und Preview
 ## Aktueller Funktionsumfang
 
 - Mehrere Profile mit aktivem Standardprofil
-- `Promptfire: Copy context for active profile`
+- `Promptfire: Run default output target for active profile`
 - `Promptfire: Preview context for active profile`
 - `Promptfire: Switch active profile`
 - `Promptfire: Reload vault config`
@@ -31,11 +31,33 @@ Scaffold steht. Build, Manifest, Commands, Settings, Kontextsammlung und Preview
   - Backlinks
   - einfache Textsuche
 - Optionale vault-native Konfigurationsdatei unter `.promptfire.json`
-- Dynamische profilgebundene Commands für Copy und Preview
-- Konfigurierbare Template Blocks mit Reihenfolge, Aktivierung und eigener Überschrift
-- Profilweite Inhaltsfilter für Frontmatter, Body, Codeblöcke und Pfadlabels
-- Debug-Vorschau mit Aufschlüsselung pro eingebundener Quelle
-- Deterministische Kürzung bei überschrittenem Zeichenlimit
+- Dynamische profilgebundene Commands für Default-Target und Preview
+- Output Targets für:
+  - Clipboard
+  - neue Note
+  - bestehende Note appenden
+  - aktive Note appenden
+  - Scratchpad-Note
+  - Deep Links zu externen Apps
+- Exportformate: Markdown, XML, JSON
+- Konfigurierbare Template Blocks mit Reihenfolge, Aktivierung, eigener Überschrift und eigenem Budget
+- Section Extractors pro Source:
+  - Full note
+  - Frontmatter only
+  - Body only
+  - Heading-filtered
+  - Code blocks only
+- Regex include/exclude pro Source
+- Priorität und Character-Budget pro Source Definition
+- Interaktive Preview mit:
+  - Quellen live ein-/ausschalten
+  - Reihenfolge ändern
+  - Blöcke einzeln aktivieren/deaktivieren
+  - Ausgabeformat wechseln
+  - Recompile ohne erneute Sammlung
+  - Snapshot-Profil aus der aktuellen Preview speichern
+- Template-Variablen und einfache `{{#if ...}}`-Bedingungen in Aufgaben- und Export-Templates
+- Deterministische Kürzung auf Source-, Block- und Gesamtbudget-Ebene
 - Hinweise auf fehlende oder übersprungene Quellen
 
 ## Search Query Syntax
@@ -79,8 +101,8 @@ npm run dev
 1. `npm run build`
 2. `manifest.json`, `main.js` und `styles.css` nach `<vault>/.obsidian/plugins/promptfire/` kopieren
 3. Plugin in Obsidian aktivieren
-4. In den Plugin-Settings ein Profil und passende Source Definitions konfigurieren
-5. `Copy context` oder `Preview context` ausführen
+4. In den Plugin-Settings ein Profil, Sources, Targets und Budgets konfigurieren
+5. `Run default output target` oder `Preview context` ausführen
 
 Der aktuelle Testvault liegt bei `~/notes`.
 
@@ -93,4 +115,4 @@ Der aktuelle Testvault liegt bei `~/notes`.
 
 ## Nächster Schritt
 
-Das Plugin gegen den Testvault schärfen: sinnvolle Referenznotizen anlegen, den Output in echten Notizen prüfen und dann Profil-Logik oder feinere Priorisierung ergänzen.
+Das Plugin gegen den Testvault schärfen: echte Profile für `~/notes` anlegen, Output Targets in realen Workflows prüfen und danach feinere Query-DSLs oder modellspezifische Presets ergänzen.
