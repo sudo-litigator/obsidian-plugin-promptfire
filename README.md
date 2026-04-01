@@ -135,6 +135,7 @@ npm run dev
 
 - Changelog: [CHANGELOG.md](/home/luca/studio/software/obsidian-plugins/promptfire/CHANGELOG.md)
 - `0.1.0` release notes: [docs/releases/0.1.0.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases/0.1.0.md)
+- `0.1.0` release body: [docs/releases/0.1.0-body.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases/0.1.0-body.md)
 
 ## Status
 
