@@ -11,6 +11,17 @@ Instead of manually pasting style rules, note structure, metadata patterns, and 
 - Exports the result to the clipboard, notes inside your vault, scratchpads, or deep links
 - Stays model-agnostic and local to Obsidian
 
+## Documentation
+
+- Documentation index: [docs/index.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/index.md)
+- User guide: [docs/user-guide.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/user-guide.md)
+- Configuration reference: [docs/config-reference.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/config-reference.md)
+- Query syntax: [docs/query-syntax.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/query-syntax.md)
+- Architecture: [docs/architecture.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/architecture.md)
+- Examples: [docs/examples.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/examples.md)
+- Troubleshooting: [docs/troubleshooting.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/troubleshooting.md)
+- Release process: [RELEASE.md](/home/luca/studio/software/obsidian-plugins/promptfire/RELEASE.md)
+
 ## Highlights
 
 - Multiple named profiles
