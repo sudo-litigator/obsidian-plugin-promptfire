@@ -1,0 +1,44 @@
+.promptfire-preview-modal .modal-content {
+  max-width: 960px;
+  width: min(960px, 92vw);
+}
+
+.promptfire-preview__meta {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.promptfire-preview__warnings {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.promptfire-preview__warnings ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.promptfire-preview__textarea {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0.75rem;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  min-height: 380px;
+  padding: 1rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.promptfire-preview__actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}

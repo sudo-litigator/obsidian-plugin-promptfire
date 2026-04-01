@@ -1,0 +1,9 @@
+{
+  "id": "promptfire",
+  "name": "Promptfire",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Copy structured vault context for AI models into your clipboard.",
+  "author": "luca",
+  "isDesktopOnly": false
+}
