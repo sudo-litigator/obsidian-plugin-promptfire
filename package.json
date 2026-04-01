@@ -1,7 +1,7 @@
 {
   "name": "promptfire",
   "version": "0.1.0",
-  "description": "Obsidian plugin for copying structured vault context into AI models.",
+  "description": "Obsidian plugin for compiling and exporting structured vault context for AI workflows.",
   "main": "main.js",
   "type": "module",
   "scripts": {
