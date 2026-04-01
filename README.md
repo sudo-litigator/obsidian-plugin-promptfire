@@ -17,16 +17,49 @@ Scaffold steht. Build, Manifest, Commands, Settings, Kontextsammlung und Preview
 
 ## Aktueller Funktionsumfang
 
-- `Promptfire: Copy context`
-- `Promptfire: Preview context`
-- Konfigurierbare Referenznotizen und Referenzordner
-- Exclude-Liste für einzelne Notizen
-- Aktive Note als `full`, `selection` oder `selection-fallback-full`
-- Optionale Einbindung ausgehender Links und Backlinks mit Mengenlimit
-- Steuerbare Prompt-Sektionen für Task, Working Rules und Included Sources
-- Steuerbare Inhaltsfilter für Frontmatter, Body und Codeblöcke
+- Mehrere Profile mit aktivem Standardprofil
+- `Promptfire: Copy context for active profile`
+- `Promptfire: Preview context for active profile`
+- `Promptfire: Switch active profile`
+- `Promptfire: Reload vault config`
+- `Promptfire: Export resolved settings to vault config`
+- Typisierte Source Definitions für:
+  - aktive Note
+  - einzelne Datei
+  - Ordner
+  - ausgehende Links
+  - Backlinks
+  - einfache Textsuche
+- Optionale vault-native Konfigurationsdatei unter `.promptfire.json`
+- Dynamische profilgebundene Commands für Copy und Preview
+- Konfigurierbare Template Blocks mit Reihenfolge, Aktivierung und eigener Überschrift
+- Profilweite Inhaltsfilter für Frontmatter, Body, Codeblöcke und Pfadlabels
+- Debug-Vorschau mit Aufschlüsselung pro eingebundener Quelle
 - Deterministische Kürzung bei überschrittenem Zeichenlimit
 - Hinweise auf fehlende oder übersprungene Quellen
+
+## Search Query Syntax
+
+`search`-Quellen unterstützen jetzt feldbezogene, case-insensitive Abfragen:
+
+- Bare terms: durchsuchen Pfad, Dateiname, Text, Tags, Headings und Frontmatter
+- `path:guides`
+- `name:daily`
+- `text:"prompt engineering"`
+- `tag:ai`
+- `heading:conventions`
+- `fm:status=active`
+- Negation mit `-`, z. B. `-name:draft`
+
+Beispiel:
+
+```text
+tag:ai path:guides "prompt engineering" -name:draft fm:status=active
+```
+
+## Vault Config
+
+Wenn `Enable vault config` aktiv ist, lädt Promptfire zusätzliche Settings aus einer Datei im Vault, standardmäßig `.promptfire.json`. Die Datei kann per Command oder im Settings-Tab aus dem aktuellen Stand exportiert werden.
 
 ## Entwicklung
 
@@ -46,7 +79,7 @@ npm run dev
 1. `npm run build`
 2. `manifest.json`, `main.js` und `styles.css` nach `<vault>/.obsidian/plugins/promptfire/` kopieren
 3. Plugin in Obsidian aktivieren
-4. In den Plugin-Settings die gewünschten Kontextquellen aktivieren
+4. In den Plugin-Settings ein Profil und passende Source Definitions konfigurieren
 5. `Copy context` oder `Preview context` ausführen
 
 Der aktuelle Testvault liegt bei `~/notes`.

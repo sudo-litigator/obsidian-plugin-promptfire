@@ -21,6 +21,41 @@
   padding-left: 1.25rem;
 }
 
+.promptfire-preview__debug {
+  margin-bottom: 1rem;
+}
+
+.promptfire-preview__debug-empty {
+  color: var(--text-muted);
+}
+
+.promptfire-preview__debug-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.promptfire-preview__debug-item,
+.promptfire-settings__card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0.75rem;
+  padding: 0.875rem 1rem;
+}
+
+.promptfire-preview__debug-title,
+.promptfire-settings__card h4 {
+  font-weight: var(--font-semibold);
+  margin-bottom: 0.25rem;
+}
+
+.promptfire-preview__debug-meta {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .promptfire-preview__textarea {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);

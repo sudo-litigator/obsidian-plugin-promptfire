@@ -20,7 +20,7 @@ export class PromptfirePreviewModal extends Modal {
     contentEl.createEl("h2", { text: "Promptfire Preview" });
     contentEl.createDiv({
       cls: "promptfire-preview__meta",
-      text: `${this.result.characterCount.toLocaleString()} characters from ${this.result.includedSourcePaths.length} source(s)`,
+      text: `Profile: ${this.result.profileName} | ${this.result.characterCount.toLocaleString()} characters | ${this.result.includedSources.length} source(s)`,
     });
 
     if (this.result.issues.length > 0) {
@@ -33,6 +33,39 @@ export class PromptfirePreviewModal extends Modal {
       }
     }
 
+    const debugContainer = contentEl.createDiv({ cls: "promptfire-preview__debug" });
+    debugContainer.createEl("h3", { text: "Included Sources" });
+
+    if (this.result.includedSources.length === 0) {
+      debugContainer.createDiv({
+        cls: "promptfire-preview__debug-empty",
+        text: "No sources were included.",
+      });
+    } else {
+      const debugList = debugContainer.createDiv({ cls: "promptfire-preview__debug-list" });
+
+      for (const source of this.result.includedSources) {
+        const item = debugList.createDiv({ cls: "promptfire-preview__debug-item" });
+        item.createEl("div", {
+          cls: "promptfire-preview__debug-title",
+          text: source.title,
+        });
+        item.createEl("div", {
+          cls: "promptfire-preview__debug-meta",
+          text: [
+            source.section,
+            source.sourceDefinitionLabel,
+            source.path,
+            `${source.characterCount.toLocaleString()} chars`,
+            source.truncated
+              ? `truncated from ${source.originalCharacterCount.toLocaleString()}`
+              : "full",
+          ].join(" | "),
+        });
+      }
+    }
+
+    contentEl.createEl("h3", { text: "Prompt Output" });
     const textarea = contentEl.createEl("textarea", { cls: "promptfire-preview__textarea" });
     textarea.readOnly = true;
     textarea.value = this.result.prompt;

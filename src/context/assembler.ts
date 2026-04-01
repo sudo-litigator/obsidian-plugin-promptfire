@@ -1,27 +1,58 @@
-import type { PromptfireSettings } from "../settings";
+import type { PromptfireProfile, PromptfireTemplateBlock, TemplateBlockId } from "./types";
 import { truncateText } from "./truncation";
 import type {
   CollectedContext,
   ContextIssue,
   IncludedSourceSummary,
   PromptBuildResult,
+  PromptSectionKind,
   PromptSource,
 } from "./types";
 
 interface IncludedSource extends PromptSource {
+  characterCount: number;
   truncated: boolean;
 }
 
 interface PromptState {
-  conventionSources: IncludedSource[];
-  currentNote: IncludedSource | null;
-  relatedSources: IncludedSource[];
+  currentNote: IncludedSource[];
+  includedSources: IncludedSource[];
+  relatedNotes: IncludedSource[];
+  vaultConventions: IncludedSource[];
 }
 
-function buildSourceBlock(source: IncludedSource, settings: PromptfireSettings): string {
+function createEmptyPromptState(): PromptState {
+  return {
+    currentNote: [],
+    includedSources: [],
+    relatedNotes: [],
+    vaultConventions: [],
+  };
+}
+
+function sectionKey(section: PromptSectionKind): keyof PromptState {
+  if (section === "vault-conventions") {
+    return "vaultConventions";
+  }
+
+  if (section === "current-note") {
+    return "currentNote";
+  }
+
+  return "relatedNotes";
+}
+
+function getTemplateBlock(
+  profile: PromptfireProfile,
+  blockId: TemplateBlockId,
+): PromptfireTemplateBlock | undefined {
+  return profile.templateBlocks.find((block) => block.id === blockId);
+}
+
+function buildSourceBlock(source: IncludedSource, profile: PromptfireProfile): string {
   const lines = [`### ${source.title}`];
 
-  if (settings.includeSourcePathLabels) {
+  if (profile.includeSourcePathLabels) {
     lines.push(`Path: ${source.path}`);
   }
 
@@ -29,110 +60,113 @@ function buildSourceBlock(source: IncludedSource, settings: PromptfireSettings):
   return lines.join("\n");
 }
 
-function buildSourceSection(
-  heading: string,
+function buildSourcesSection(
+  block: PromptfireTemplateBlock,
   sources: IncludedSource[],
-  settings: PromptfireSettings,
+  profile: PromptfireProfile,
 ): string {
-  const parts = [`## ${heading}`];
+  const parts = [`## ${block.heading}`];
 
   for (const source of sources) {
-    parts.push("", buildSourceBlock(source, settings));
+    parts.push("", buildSourceBlock(source, profile));
   }
 
   return parts.join("\n");
 }
 
-function buildWorkingRulesSection(workingRules: string[]): string {
-  return ["## Working Rules", ...workingRules.map((rule) => `- ${rule}`)].join("\n");
+function buildWorkingRulesSection(block: PromptfireTemplateBlock, workingRules: string[]): string {
+  return [`## ${block.heading}`, ...workingRules.map((rule) => `- ${rule}`)].join("\n");
 }
 
-function buildIncludedSourcesSection(sources: IncludedSource[]): string {
-  return ["## Included Sources", ...sources.map((source) => `- ${source.path}`)].join("\n");
+function buildIncludedSourcesSection(
+  block: PromptfireTemplateBlock,
+  includedSources: IncludedSource[],
+): string {
+  return [
+    `## ${block.heading}`,
+    ...includedSources.map((source) => `- ${source.path}`),
+  ].join("\n");
 }
 
-function buildPrompt(state: PromptState, settings: PromptfireSettings): string {
+function buildPrompt(state: PromptState, profile: PromptfireProfile): string {
   const parts: string[] = ["# Promptfire Context"];
 
-  if (settings.includeTaskSection && settings.taskInstruction.trim()) {
-    parts.push("", "## Task", settings.taskInstruction.trim());
-  }
+  for (const block of profile.templateBlocks) {
+    if (!block.enabled) {
+      continue;
+    }
 
-  if (state.conventionSources.length > 0) {
-    parts.push("", buildSourceSection("Vault Conventions", state.conventionSources, settings));
-  }
+    if (block.id === "task") {
+      if (profile.taskInstruction.trim()) {
+        parts.push("", `## ${block.heading}`, profile.taskInstruction.trim());
+      }
+      continue;
+    }
 
-  if (state.currentNote) {
-    parts.push("", buildSourceSection("Current Note", [state.currentNote], settings));
-  }
+    if (block.id === "vault-conventions" && state.vaultConventions.length > 0) {
+      parts.push("", buildSourcesSection(block, state.vaultConventions, profile));
+      continue;
+    }
 
-  if (state.relatedSources.length > 0) {
-    parts.push("", buildSourceSection("Related Notes", state.relatedSources, settings));
-  }
+    if (block.id === "current-note" && state.currentNote.length > 0) {
+      parts.push("", buildSourcesSection(block, state.currentNote, profile));
+      continue;
+    }
 
-  if (settings.includeWorkingRules && settings.workingRules.length > 0) {
-    parts.push("", buildWorkingRulesSection(settings.workingRules));
-  }
+    if (block.id === "related-notes" && state.relatedNotes.length > 0) {
+      parts.push("", buildSourcesSection(block, state.relatedNotes, profile));
+      continue;
+    }
 
-  if (settings.includeIncludedSourcesSection) {
-    parts.push(
-      "",
-      buildIncludedSourcesSection([
-        ...state.conventionSources,
-        ...(state.currentNote ? [state.currentNote] : []),
-        ...state.relatedSources,
-      ]),
-    );
+    if (block.id === "working-rules" && profile.workingRules.length > 0) {
+      parts.push("", buildWorkingRulesSection(block, profile.workingRules));
+      continue;
+    }
+
+    if (block.id === "included-sources" && state.includedSources.length > 0) {
+      parts.push("", buildIncludedSourcesSection(block, state.includedSources));
+    }
   }
 
   return `${parts.join("\n")}\n`;
 }
 
 function appendSource(state: PromptState, source: IncludedSource): PromptState {
-  if (source.section === "vault-conventions") {
-    return {
-      ...state,
-      conventionSources: [...state.conventionSources, source],
-    };
-  }
-
-  if (source.section === "current-note") {
-    return {
-      ...state,
-      currentNote: source,
-    };
-  }
+  const key = sectionKey(source.section);
 
   return {
     ...state,
-    relatedSources: [...state.relatedSources, source],
+    [key]: [...state[key], source],
+    includedSources: [...state.includedSources, source],
   };
 }
 
 function fitSourceContent(
   state: PromptState,
   candidate: PromptSource,
-  settings: PromptfireSettings,
+  profile: PromptfireProfile,
 ): IncludedSource | null {
   const fullSource: IncludedSource = {
     ...candidate,
+    characterCount: candidate.content.length,
     truncated: false,
   };
   const fullState = appendSource(state, fullSource);
-  const fullPrompt = buildPrompt(fullState, settings);
+  const fullPrompt = buildPrompt(fullState, profile);
 
-  if (fullPrompt.length <= settings.maxOutputCharacters) {
+  if (fullPrompt.length <= profile.maxOutputCharacters) {
     return fullSource;
   }
 
   const emptySource: IncludedSource = {
     ...candidate,
+    characterCount: 0,
     content: "",
     truncated: false,
   };
   const skeletonState = appendSource(state, emptySource);
-  const skeletonPrompt = buildPrompt(skeletonState, settings);
-  const remainingForContent = settings.maxOutputCharacters - skeletonPrompt.length;
+  const skeletonPrompt = buildPrompt(skeletonState, profile);
+  const remainingForContent = profile.maxOutputCharacters - skeletonPrompt.length;
 
   if (remainingForContent <= 0) {
     return null;
@@ -142,161 +176,123 @@ function fitSourceContent(
 
   return {
     ...candidate,
+    characterCount: truncated.text.length,
     content: truncated.text,
     truncated: truncated.wasTruncated,
   };
 }
 
-function buildLimitIssue(path: string, message: string): ContextIssue {
+function buildIssueFromSource(source: PromptSource, reason: string, message: string): ContextIssue {
   return {
     message,
-    path,
-    reason: "output-limit",
+    path: source.path,
+    reason,
+    sourceDefinitionId: source.sourceDefinitionId,
+    sourceDefinitionLabel: source.sourceDefinitionLabel,
   };
 }
 
 function summarizeSources(state: PromptState): IncludedSourceSummary[] {
-  return [
-    ...state.conventionSources,
-    ...(state.currentNote ? [state.currentNote] : []),
-    ...state.relatedSources,
-  ].map((source) => ({
+  return state.includedSources.map((source) => ({
+    characterCount: source.characterCount,
     kind: source.kind,
+    originalCharacterCount: source.originalCharacterCount,
     path: source.path,
     section: source.section,
+    sourceDefinitionId: source.sourceDefinitionId,
+    sourceDefinitionLabel: source.sourceDefinitionLabel,
+    sourceDefinitionType: source.sourceDefinitionType,
     title: source.title,
+    truncated: source.truncated,
   }));
 }
 
-function appendStageUntilLimit(
-  state: PromptState,
-  sources: PromptSource[],
-  settings: PromptfireSettings,
-  issues: ContextIssue[],
-  sourceLabel: string,
-): { state: PromptState; stopped: boolean } {
-  let nextState = state;
+function getEnabledSectionIds(profile: PromptfireProfile): Set<PromptSectionKind> {
+  const enabledSections = new Set<PromptSectionKind>();
 
-  for (const [index, source] of sources.entries()) {
-    const fittedSource = fitSourceContent(nextState, source, settings);
-
-    if (!fittedSource) {
-      const omittedCount = sources.length - index;
-      issues.push(
-        buildLimitIssue(
-          source.path,
-          `Promptfire omitted ${omittedCount} ${sourceLabel}(s) because the output limit was reached before "${source.path}" could be added.`,
-        ),
-      );
-      return { state: nextState, stopped: true };
+  for (const block of profile.templateBlocks) {
+    if (!block.enabled) {
+      continue;
     }
 
-    nextState = appendSource(nextState, fittedSource);
+    if (
+      block.id === "vault-conventions" ||
+      block.id === "current-note" ||
+      block.id === "related-notes"
+    ) {
+      enabledSections.add(block.id);
+    }
+  }
+
+  return enabledSections;
+}
+
+export function assemblePrompt(
+  context: CollectedContext,
+  profile: PromptfireProfile,
+): PromptBuildResult {
+  const issues = [...context.issues];
+  const enabledSections = getEnabledSectionIds(profile);
+  const candidateSources: PromptSource[] = [];
+
+  for (const source of context.sources) {
+    if (!enabledSections.has(source.section)) {
+      issues.push(
+        buildIssueFromSource(
+          source,
+          "section-disabled",
+          `Promptfire skipped "${source.path}" because the template block for section "${source.section}" is disabled.`,
+        ),
+      );
+      continue;
+    }
+
+    candidateSources.push(source);
+  }
+
+  let state = createEmptyPromptState();
+
+  for (const [index, source] of candidateSources.entries()) {
+    const fittedSource = fitSourceContent(state, source, profile);
+
+    if (!fittedSource) {
+      const omittedCount = candidateSources.length - index;
+      issues.push(
+        buildIssueFromSource(
+          source,
+          "output-limit",
+          `Promptfire omitted ${omittedCount} remaining source(s) because the output limit was reached before "${source.path}" could be added.`,
+        ),
+      );
+      break;
+    }
+
+    state = appendSource(state, fittedSource);
 
     if (fittedSource.truncated) {
-      const omittedCount = sources.length - index - 1;
+      const omittedCount = candidateSources.length - index - 1;
       issues.push(
-        buildLimitIssue(
-          source.path,
+        buildIssueFromSource(
+          source,
+          "output-limit",
           `Promptfire truncated "${source.path}" to stay within the output limit.`,
         ),
       );
 
       if (omittedCount > 0) {
         issues.push(
-          buildLimitIssue(
-            source.path,
-            `Promptfire omitted ${omittedCount} additional ${sourceLabel}(s) after truncating "${source.path}".`,
+          buildIssueFromSource(
+            source,
+            "output-limit",
+            `Promptfire omitted ${omittedCount} additional source(s) after truncating "${source.path}".`,
           ),
         );
       }
-
-      return { state: nextState, stopped: true };
+      break;
     }
   }
 
-  return { state: nextState, stopped: false };
-}
-
-export function assemblePrompt(
-  context: CollectedContext,
-  settings: PromptfireSettings,
-): PromptBuildResult {
-  const issues = [...context.issues];
-  let state: PromptState = {
-    conventionSources: [],
-    currentNote: null,
-    relatedSources: [],
-  };
-
-  const conventionStage = appendStageUntilLimit(
-    state,
-    context.conventionSources,
-    settings,
-    issues,
-    "vault context source",
-  );
-  state = conventionStage.state;
-
-  if (!conventionStage.stopped && context.currentNote) {
-    const fittedCurrentNote = fitSourceContent(state, context.currentNote, settings);
-
-    if (fittedCurrentNote) {
-      state = appendSource(state, fittedCurrentNote);
-
-      if (fittedCurrentNote.truncated) {
-        issues.push(
-          buildLimitIssue(
-            context.currentNote.path,
-            `Promptfire truncated the active note "${context.currentNote.path}" to stay within the output limit.`,
-          ),
-        );
-      }
-    } else {
-      issues.push(
-        buildLimitIssue(
-          context.currentNote.path,
-          `Promptfire omitted the active note "${context.currentNote.path}" because the output limit was reached.`,
-        ),
-      );
-    }
-  } else if (conventionStage.stopped && context.currentNote) {
-    issues.push(
-      buildLimitIssue(
-        context.currentNote.path,
-        `Promptfire omitted the active note "${context.currentNote.path}" because earlier vault context already consumed the output limit.`,
-      ),
-    );
-  }
-
-  const relatedStageStartAllowed =
-    !conventionStage.stopped &&
-    !(state.currentNote && state.currentNote.truncated) &&
-    context.relatedSources.length > 0;
-
-  if (relatedStageStartAllowed) {
-    const relatedStage = appendStageUntilLimit(
-      state,
-      context.relatedSources,
-      settings,
-      issues,
-      "related note",
-    );
-    state = relatedStage.state;
-  } else if (context.relatedSources.length > 0 && !relatedStageStartAllowed) {
-    const firstRelatedSource = context.relatedSources[0];
-
-    if (firstRelatedSource) {
-      issues.push(
-        buildLimitIssue(
-          firstRelatedSource.path,
-          "Promptfire omitted related notes because earlier sections already consumed the output limit.",
-        ),
-      );
-    }
-  }
-
-  const prompt = buildPrompt(state, settings);
+  const prompt = buildPrompt(state, profile);
   const includedSources = summarizeSources(state);
 
   return {
@@ -304,6 +300,8 @@ export function assemblePrompt(
     includedSourcePaths: includedSources.map((source) => source.path),
     includedSources,
     issues,
+    profileId: context.profileId,
+    profileName: context.profileName,
     prompt,
   };
 }
