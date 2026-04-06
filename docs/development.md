@@ -5,7 +5,7 @@ for Promptfire.
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - npm
 - Obsidian 1.5.0 or newer for manual plugin testing
 
