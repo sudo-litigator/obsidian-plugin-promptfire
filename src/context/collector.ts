@@ -18,6 +18,15 @@ interface CompiledSourcePatterns {
   includePattern: RegExp | null;
 }
 
+interface SeenSourceDetails {
+  sourceDefinitionLabel: string;
+}
+
+interface DuplicatePathMatch {
+  existingSourceDefinitionLabel: string;
+  path: string;
+}
+
 function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/g, "\n");
 }
@@ -35,6 +44,41 @@ function buildIssue(
     sourceDefinitionId: sourceDefinition.id,
     sourceDefinitionLabel: sourceDefinition.label,
   };
+}
+
+function buildDuplicatePathIssue(
+  sourceDefinition: PromptfireSourceDefinition,
+  contextPath: string,
+  duplicates: DuplicatePathMatch[],
+): ContextIssue {
+  if (duplicates.length === 1) {
+    const duplicate = duplicates[0];
+
+    return buildIssue(
+      sourceDefinition,
+      duplicate?.path ?? contextPath,
+      "duplicate-path",
+      `Promptfire skipped "${duplicate?.path ?? contextPath}" from source "${sourceDefinition.label}" because it was already collected earlier by source "${duplicate?.existingSourceDefinitionLabel ?? "another source"}". Promptfire deduplicates note paths across source definitions.`,
+    );
+  }
+
+  const exampleLimit = 3;
+  const examples = duplicates
+    .slice(0, exampleLimit)
+    .map(
+      (duplicate) =>
+        `"${duplicate.path}" (already from "${duplicate.existingSourceDefinitionLabel}")`,
+    )
+    .join(", ");
+  const remainder =
+    duplicates.length > exampleLimit ? `, plus ${duplicates.length - exampleLimit} more` : "";
+
+  return buildIssue(
+    sourceDefinition,
+    contextPath,
+    "duplicate-path",
+    `Promptfire skipped ${duplicates.length} note(s) from source "${sourceDefinition.label}" because those paths were already collected earlier in the profile. Examples: ${examples}${remainder}. Promptfire deduplicates note paths across source definitions.`,
+  );
 }
 
 function stripFencedCodeBlocks(content: string): string {
@@ -402,6 +446,35 @@ function applyItemLimit<T>(items: T[], maxItems: number): { items: T[]; omittedC
   };
 }
 
+function partitionCandidatesBySeenPaths<T extends { path: string }>(
+  candidates: T[],
+  excludedPaths: Set<string>,
+  seenPaths: Map<string, SeenSourceDetails>,
+): { duplicateMatches: DuplicatePathMatch[]; uniqueCandidates: T[] } {
+  const duplicateMatches: DuplicatePathMatch[] = [];
+  const uniqueCandidates: T[] = [];
+
+  for (const candidate of candidates) {
+    if (excludedPaths.has(candidate.path)) {
+      continue;
+    }
+
+    const existing = seenPaths.get(candidate.path);
+
+    if (existing) {
+      duplicateMatches.push({
+        existingSourceDefinitionLabel: existing.sourceDefinitionLabel,
+        path: candidate.path,
+      });
+      continue;
+    }
+
+    uniqueCandidates.push(candidate);
+  }
+
+  return { duplicateMatches, uniqueCandidates };
+}
+
 function appendFrontmatterValue(
   target: Record<string, string[]>,
   key: string,
@@ -555,7 +628,7 @@ export async function collectContext(
   const issues: ContextIssue[] = [];
   const sources: PromptSource[] = [];
   const excludedPaths = new Set(profile.excludeNotePaths);
-  const seenPaths = new Set<string>();
+  const seenPaths = new Map<string, SeenSourceDetails>();
 
   const activeFile = app.workspace.getActiveFile();
   let activeMarkdownFile: TFile | null = null;
@@ -608,7 +681,21 @@ export async function collectContext(
     if (sourceDefinition.type === "active-note") {
       const file = ensureActiveMarkdownFile(sourceDefinition);
 
-      if (!file || excludedPaths.has(file.path) || seenPaths.has(file.path)) {
+      if (!file || excludedPaths.has(file.path)) {
+        continue;
+      }
+
+      const existing = seenPaths.get(file.path);
+
+      if (existing) {
+        issues.push(
+          buildDuplicatePathIssue(sourceDefinition, file.path, [
+            {
+              existingSourceDefinitionLabel: existing.sourceDefinitionLabel,
+              path: file.path,
+            },
+          ]),
+        );
         continue;
       }
 
@@ -662,7 +749,9 @@ export async function collectContext(
 
       if (source) {
         sources.push(source);
-        seenPaths.add(source.path);
+        seenPaths.set(source.path, {
+          sourceDefinitionLabel: source.sourceDefinitionLabel,
+        });
       }
 
       continue;
@@ -683,7 +772,21 @@ export async function collectContext(
         continue;
       }
 
-      if (excludedPaths.has(path) || seenPaths.has(path)) {
+      if (excludedPaths.has(path)) {
+        continue;
+      }
+
+      const existing = seenPaths.get(path);
+
+      if (existing) {
+        issues.push(
+          buildDuplicatePathIssue(sourceDefinition, path, [
+            {
+              existingSourceDefinitionLabel: existing.sourceDefinitionLabel,
+              path,
+            },
+          ]),
+        );
         continue;
       }
 
@@ -715,7 +818,9 @@ export async function collectContext(
 
       if (source) {
         sources.push(source);
-        seenPaths.add(source.path);
+        seenPaths.set(source.path, {
+          sourceDefinitionLabel: source.sourceDefinitionLabel,
+        });
       }
 
       continue;
@@ -750,10 +855,17 @@ export async function collectContext(
         continue;
       }
 
-      const folderFiles = getMarkdownFilesForFolder(app, folder, sourceDefinition.recursive ?? true).filter(
-        (file) => !excludedPaths.has(file.path) && !seenPaths.has(file.path),
+      const folderFiles = getMarkdownFilesForFolder(app, folder, sourceDefinition.recursive ?? true);
+      const { duplicateMatches, uniqueCandidates } = partitionCandidatesBySeenPaths(
+        folderFiles,
+        excludedPaths,
+        seenPaths,
       );
-      const limited = applyItemLimit(folderFiles, sourceDefinition.maxItems ?? 5);
+      const limited = applyItemLimit(uniqueCandidates, sourceDefinition.maxItems ?? 5);
+
+      if (duplicateMatches.length > 0) {
+        issues.push(buildDuplicatePathIssue(sourceDefinition, folder.path, duplicateMatches));
+      }
 
       if (limited.omittedCount > 0) {
         issues.push(
@@ -781,7 +893,9 @@ export async function collectContext(
 
         if (source) {
           sources.push(source);
-          seenPaths.add(source.path);
+          seenPaths.set(source.path, {
+            sourceDefinitionLabel: source.sourceDefinitionLabel,
+          });
         }
       }
 
@@ -799,10 +913,16 @@ export async function collectContext(
         sourceDefinition.type === "outgoing-links"
           ? getOutgoingLinkedFiles(app, file)
           : getBacklinkedFiles(app, file);
-      const filteredFiles = linkedFiles.filter(
-        (candidate) => !excludedPaths.has(candidate.path) && !seenPaths.has(candidate.path),
+      const { duplicateMatches, uniqueCandidates } = partitionCandidatesBySeenPaths(
+        linkedFiles,
+        excludedPaths,
+        seenPaths,
       );
-      const limited = applyItemLimit(filteredFiles, sourceDefinition.maxItems ?? 5);
+      const limited = applyItemLimit(uniqueCandidates, sourceDefinition.maxItems ?? 5);
+
+      if (duplicateMatches.length > 0) {
+        issues.push(buildDuplicatePathIssue(sourceDefinition, file.path, duplicateMatches));
+      }
 
       if (limited.omittedCount > 0) {
         issues.push(
@@ -830,7 +950,9 @@ export async function collectContext(
 
         if (source) {
           sources.push(source);
-          seenPaths.add(source.path);
+          seenPaths.set(source.path, {
+            sourceDefinitionLabel: source.sourceDefinitionLabel,
+          });
         }
       }
 
@@ -853,10 +975,16 @@ export async function collectContext(
       }
 
       const matches = await getSearchMatches(app, sourceDefinition, profile);
-      const filteredMatches = matches.filter(
-        (candidate) => !excludedPaths.has(candidate.path) && !seenPaths.has(candidate.path),
+      const { duplicateMatches, uniqueCandidates } = partitionCandidatesBySeenPaths(
+        matches,
+        excludedPaths,
+        seenPaths,
       );
-      const limited = applyItemLimit(filteredMatches, sourceDefinition.maxItems ?? 5);
+      const limited = applyItemLimit(uniqueCandidates, sourceDefinition.maxItems ?? 5);
+
+      if (duplicateMatches.length > 0) {
+        issues.push(buildDuplicatePathIssue(sourceDefinition, query, duplicateMatches));
+      }
 
       if (limited.omittedCount > 0) {
         issues.push(
@@ -884,7 +1012,9 @@ export async function collectContext(
 
         if (source) {
           sources.push(source);
-          seenPaths.add(source.path);
+          seenPaths.set(source.path, {
+            sourceDefinitionLabel: source.sourceDefinitionLabel,
+          });
         }
       }
     }
