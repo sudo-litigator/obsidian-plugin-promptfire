@@ -129,7 +129,7 @@ This is the fastest way to tune a profile before baking the settings in permanen
 Snapshot profiles are created from the current preview state, not from a live
 "keep following whatever the original profile would do" link.
 
-When you save a snapshot profile, Promptfire preserves:
+When you save a snapshot profile, `Promptfire` preserves:
 
 - the currently enabled sources
 - the manual source order from the preview
@@ -137,7 +137,7 @@ When you save a snapshot profile, Promptfire preserves:
 - the selected output target
 - the selected output format
 
-It also converts the included preview sources into explicit `file` sources that
+It also converts the enabled preview sources into explicit `file` sources that
 point at the concrete note paths used in that preview run.
 
 That means a snapshot profile is useful when you want to keep a successful
