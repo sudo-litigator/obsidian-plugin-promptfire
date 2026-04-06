@@ -17,7 +17,7 @@ The plugin works as a pipeline:
 
 ## Main Modules
 
-### [src/main.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/main.ts)
+### [src/main.ts](../src/main.ts)
 
 Top-level plugin entry point.
 
@@ -30,7 +30,7 @@ Responsibilities:
 - output target execution
 - vault config reload and export
 
-### [src/settings.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/settings.ts)
+### [src/settings.ts](../src/settings.ts)
 
 Settings normalization and settings tab UI.
 
@@ -42,7 +42,7 @@ Responsibilities:
 - clamp numeric limits
 - migrate old config shapes
 
-### [src/context/collector.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/context/collector.ts)
+### [src/context/collector.ts](../src/context/collector.ts)
 
 Vault collection layer.
 
@@ -57,7 +57,7 @@ Responsibilities:
 - apply regex include and exclude
 - emit collection issues
 
-### [src/context/assembler.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/context/assembler.ts)
+### [src/context/assembler.ts](../src/context/assembler.ts)
 
 Prompt compilation layer.
 
@@ -71,7 +71,7 @@ Responsibilities:
 - enforce global output limits
 - return a structured build result
 
-### [src/services/template-renderer.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/services/template-renderer.ts)
+### [src/services/template-renderer.ts](../src/services/template-renderer.ts)
 
 Template rendering utilities.
 
@@ -81,7 +81,7 @@ Responsibilities:
 - resolve simple conditional sections
 - render blocks to Markdown, XML, or JSON
 
-### [src/services/output-targets.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/services/output-targets.ts)
+### [src/services/output-targets.ts](../src/services/output-targets.ts)
 
 Output dispatch layer.
 
@@ -93,7 +93,7 @@ Responsibilities:
 - deep-link generation
 - file opening after write
 
-### [src/ui/preview-modal.ts](/home/luca/studio/software/obsidian-plugins/promptfire/src/ui/preview-modal.ts)
+### [src/ui/preview-modal.ts](../src/ui/preview-modal.ts)
 
 Interactive preview UI.
 

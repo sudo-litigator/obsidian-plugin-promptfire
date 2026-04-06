@@ -265,4 +265,4 @@ Conditional blocks:
 
 ## Example Vault Config
 
-See [docs/examples.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/examples.md) for larger working examples.
+See [docs/examples.md](examples.md) for larger working examples.

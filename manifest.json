@@ -1,9 +1,9 @@
 {
   "id": "promptfire",
   "name": "Promptfire",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "Compile and export structured vault context for AI workflows.",
-  "author": "luca",
+  "author": "sudo-litigator",
   "isDesktopOnly": false
 }

@@ -12,11 +12,11 @@ This file documents the release workflow for `Promptfire`.
 
 ## Files That Matter
 
-- [package.json](/home/luca/studio/software/obsidian-plugins/promptfire/package.json)
-- [manifest.json](/home/luca/studio/software/obsidian-plugins/promptfire/manifest.json)
-- [versions.json](/home/luca/studio/software/obsidian-plugins/promptfire/versions.json)
-- [CHANGELOG.md](/home/luca/studio/software/obsidian-plugins/promptfire/CHANGELOG.md)
-- [docs/releases/](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases)
+- [package.json](package.json)
+- [manifest.json](manifest.json)
+- [versions.json](versions.json)
+- [CHANGELOG.md](CHANGELOG.md)
+- [docs/releases/](docs/releases/)
 
 ## Release Checklist
 

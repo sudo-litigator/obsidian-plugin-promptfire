@@ -1,67 +1,76 @@
-# Promptfire
+<div align="center">
+  <h1>Promptfire</h1>
+  <p><strong>Structured vault context for repeatable AI workflows in Obsidian.</strong></p>
+  <p>Compile notes, links, folders, metadata, and search results into deterministic prompts for ChatGPT, Claude, local models, and any other external AI tool.</p>
+  <p>
+    <img src="https://img.shields.io/badge/version-1.0.0-7c3aed" alt="Version 1.0.0" />
+    <img src="https://img.shields.io/badge/Obsidian-1.5.0%2B-8b5cf6?logo=obsidian&logoColor=white" alt="Obsidian 1.5.0+" />
+    <img src="https://img.shields.io/badge/license-MIT-059669" alt="MIT License" />
+    <img src="https://img.shields.io/badge/workflow-model--agnostic-111827" alt="Model agnostic" />
+  </p>
+</div>
 
-`Promptfire` is an Obsidian plugin for compiling vault context into deterministic prompts for external AI tools.
+---
 
-Instead of manually pasting style rules, note structure, metadata patterns, and the current note into ChatGPT, Claude, or local models, `Promptfire` builds that context for you from your vault and sends it to the output target you choose.
+<h2 align="center">Why Promptfire Exists</h2>
 
-## What It Does
+Promptfire is for people who already keep valuable context in Obsidian but do not want to rebuild that context by hand every time they use an AI tool.
 
-- Compiles context from multiple vault sources into one reproducible prompt
-- Lets you control exactly what gets included, in what order, and under which budget
-- Exports the result to the clipboard, notes inside your vault, scratchpads, or deep links
-- Stays model-agnostic and local to Obsidian
+Instead of repeatedly pasting style rules, active note content, linked notes, conventions, and background material into another app, Promptfire turns your vault into a reproducible prompt assembly system.
 
-## Documentation
+That gives you:
 
-- Documentation index: [docs/index.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/index.md)
-- User guide: [docs/user-guide.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/user-guide.md)
-- Configuration reference: [docs/config-reference.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/config-reference.md)
-- Query syntax: [docs/query-syntax.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/query-syntax.md)
-- Architecture: [docs/architecture.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/architecture.md)
-- Examples: [docs/examples.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/examples.md)
-- Troubleshooting: [docs/troubleshooting.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/troubleshooting.md)
-- Release process: [RELEASE.md](/home/luca/studio/software/obsidian-plugins/promptfire/RELEASE.md)
+- repeatable prompts instead of one-off copy-paste sessions
+- explicit control over what context is included and in what order
+- budget-aware prompt construction for larger vaults
+- model-agnostic exports that stay local to Obsidian until you decide where to send them
 
-## Highlights
+<h2 align="center">How It Works</h2>
 
-- Multiple named profiles
-- Source definitions for:
-  - active note
-  - single file
-  - folder
-  - outgoing links
-  - backlinks
-  - search query
-- Section extractors:
-  - full note
-  - frontmatter only
-  - body only
-  - heading-filtered sections
-  - code blocks only
+1. Define one or more profiles for different workflows.
+2. Choose context sources such as the active note, a folder, backlinks, or a search query.
+3. Apply extractors, filters, priorities, and budgets.
+4. Preview the compiled result and export it to the target you want.
+
+<h2 align="center">Highlights</h2>
+
+- Multiple named profiles for different AI workflows
+- Source definitions for active note, single file, folder, outgoing links, backlinks, and search query
+- Section extractors for full note, frontmatter only, body only, heading-filtered sections, and code blocks only
 - Regex include and exclude filters per source
-- Per-source priority and character budgets
+- Per-source priorities and character budgets
 - Per-block budgets and global prompt budgets
-- Output formats:
-  - Markdown
-  - XML
-  - JSON
-- Output targets:
-  - clipboard
-  - new note
-  - append to note
-  - append to active note
-  - scratchpad note
-  - deep link
-- Interactive preview for:
-  - enabling and disabling sources
-  - reordering sources
-  - toggling blocks
-  - switching export format
-  - recompiling without recollecting
-  - saving preview state as a snapshot profile
-- Vault-native config via `.promptfire.json`
+- Output formats for Markdown, XML, and JSON
+- Output targets for clipboard, new note, append to note, append to active note, scratchpad note, and deep link
+- Interactive preview with source toggles, source reordering, block toggles, format switching, and recompile controls
+- Snapshot workflows for saving preview state as a reusable profile
+- Vault-native configuration via `.promptfire.json`
 
-## Commands
+<h2 align="center">Install</h2>
+
+### From GitHub Releases
+
+1. Download the latest release assets: `manifest.json`, `main.js`, and `styles.css`.
+2. Create this folder inside your vault:
+
+```text
+<vault>/.obsidian/plugins/promptfire/
+```
+
+3. Copy the downloaded files into that folder.
+4. In Obsidian, open `Settings -> Community plugins`.
+5. Enable community plugins if needed, then enable `Promptfire`.
+
+### From Source
+
+```bash
+npm install
+npm run build
+```
+
+Copy `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/promptfire/`, then enable the plugin in Obsidian.
+
+<h2 align="center">Commands</h2>
 
 - `Promptfire: Run default output target for active profile`
 - `Promptfire: Preview context for active profile`
@@ -73,13 +82,13 @@ Instead of manually pasting style rules, note structure, metadata patterns, and 
 
 If profile commands are enabled, Promptfire also registers profile-specific commands.
 
-## Search Query Syntax
+<h2 align="center">Search Query Syntax</h2>
 
 `search` sources support field-aware, case-insensitive queries.
 
-Supported patterns:
+Supported patterns include:
 
-- bare terms search path, filename, text, tags, headings, and frontmatter
+- bare terms across path, filename, text, tags, headings, and frontmatter
 - `path:guides`
 - `name:daily`
 - `text:"prompt engineering"`
@@ -94,42 +103,29 @@ Example:
 tag:ai path:guides "prompt engineering" -name:draft fm:status=active
 ```
 
-## Installation
+<h2 align="center">Vault Config</h2>
 
-### Manual
-
-1. Build the plugin:
-
-```bash
-npm install
-npm run build
-```
-
-2. Copy these files into your vault:
-
-- `manifest.json`
-- `main.js`
-- `styles.css`
-
-Target directory:
-
-```text
-<vault>/.obsidian/plugins/promptfire/
-```
-
-3. Enable `Promptfire` in Obsidian community plugins.
-
-## Vault Config
-
-If `Enable vault config` is on, Promptfire loads additional settings from a vault file, by default:
+If `Enable vault config` is enabled, Promptfire loads additional settings from a vault file, by default:
 
 ```text
 .promptfire.json
 ```
 
-You can also export the current resolved settings back into that file from the command palette or plugin settings.
+You can also export the resolved settings back into that file from the command palette or plugin settings.
 
-## Development
+<h2 align="center">Documentation Map</h2>
+
+- [Documentation index](docs/index.md)
+- [User guide](docs/user-guide.md)
+- [Configuration reference](docs/config-reference.md)
+- [Query syntax](docs/query-syntax.md)
+- [Examples](docs/examples.md)
+- [Architecture](docs/architecture.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Release process](RELEASE.md)
+- [Changelog](CHANGELOG.md)
+
+<h2 align="center">Development</h2>
 
 ```bash
 npm install
@@ -142,23 +138,17 @@ Watch mode:
 npm run dev
 ```
 
-## Release Notes
+<h2 align="center">Release Assets</h2>
 
-- Changelog: [CHANGELOG.md](/home/luca/studio/software/obsidian-plugins/promptfire/CHANGELOG.md)
-- `0.1.0` release notes: [docs/releases/0.1.0.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases/0.1.0.md)
-- `0.1.0` release body: [docs/releases/0.1.0-body.md](/home/luca/studio/software/obsidian-plugins/promptfire/docs/releases/0.1.0-body.md)
+This repository is prepared for GitHub release-based distribution. The standard shipped plugin assets are:
 
-## Status
+- `manifest.json`
+- `main.js`
+- `styles.css`
+- `versions.json`
 
-Current release: `0.1.0`
+`versions.json` remains in the repository for Obsidian release metadata and does not need to be copied into the vault during manual installation.
 
-This version establishes the power-user core:
-
-- profile-based prompt compilation
-- deterministic budgeting
-- configurable extraction and output targets
-- interactive preview and snapshot workflows
-
-## License
+<h2 align="center">License</h2>
 
 MIT
