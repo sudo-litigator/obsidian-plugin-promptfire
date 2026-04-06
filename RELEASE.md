@@ -17,70 +17,94 @@ This file documents the release workflow for `Promptfire`.
 - [versions.json](versions.json)
 - [CHANGELOG.md](CHANGELOG.md)
 - [docs/releases/](docs/releases/)
+- [.github/workflows/release.yml](.github/workflows/release.yml)
+
+## Canonical Release Outputs
+
+The current `1.x` GitHub release workflow publishes these flat assets:
+
+- `manifest.json`
+- `main.js`
+- `styles.css`
+- `versions.json`
+
+The canonical in-repo release notes are:
+
+- `CHANGELOG.md` for the short versioned summary
+- `docs/releases/<version>.md` for the detailed historical note
+- `docs/releases/<version>-body.md` for the GitHub release page body text
+
+The current workflow does not build or upload a ZIP archive.
 
 ## Release Checklist
 
-1. Update the version in `package.json`.
-2. Run:
+1. Update the version metadata.
 
-```bash
-npm version <version> --no-git-tag-version
-npm run version
-```
+   - update `package.json`
+   - run `npm run version` to sync `manifest.json` and `versions.json`
 
-3. Update release notes:
+   Or use:
 
-- add a new changelog section in `CHANGELOG.md`
-- add a detailed release note in `docs/releases/<version>.md`
-- add a Git release body in `docs/releases/<version>-body.md`
+   ```bash
+   npm version <version> --no-git-tag-version
+   npm run version
+   ```
 
-4. Build and verify:
+2. Update release notes:
 
-```bash
-npm install
-npm run build
-```
+   - add a new changelog section in `CHANGELOG.md`
+   - add a detailed release note in `docs/releases/<version>.md`
+   - add the GitHub release body text in `docs/releases/<version>-body.md`
 
-5. Copy the plugin into a vault for a real check:
+3. Build and verify:
 
-```bash
-cp main.js manifest.json styles.css <vault>/.obsidian/plugins/promptfire/
-```
+   ```bash
+   npm install
+   npm run build
+   PROMPTFIRE_RELEASE_TAG=v<version> npm run verify:release
+   ```
 
-6. Create the upload artifact:
+4. Copy the plugin into a vault for a real check:
 
-```bash
-mkdir -p dist
-zip -j dist/promptfire-<version>.zip manifest.json main.js styles.css
-sha256sum dist/promptfire-<version>.zip > dist/SHA256SUMS.txt
-```
+   ```bash
+   cp main.js manifest.json styles.css <vault>/.obsidian/plugins/promptfire/
+   ```
 
-7. Commit the release:
+5. Commit the release:
 
-```bash
-git add .
-git commit -m "Prepare <version> release"
-```
+   ```bash
+   git add .
+   git commit -m "Prepare <version> release"
+   ```
 
-8. Create the tag:
+6. Create the annotated tag:
 
-```bash
-git tag -a v<version> -m "Promptfire <version>"
-```
+   ```bash
+   git tag -a v<version> -m "Promptfire <version>"
+   ```
 
-9. Push branch and tag:
+7. Push the release commit and tag to the GitHub-hosted remote.
 
-```bash
-git push origin main
-git push origin v<version>
-```
+   If your GitHub remote is named `origin`, this is:
 
-10. Create the Git release page entry:
+   ```bash
+   git push origin main
+   git push origin v<version>
+   ```
 
-- tag: `v<version>`
-- title: `Promptfire <version>`
-- body: use `docs/releases/<version>-body.md`
-- asset: upload `dist/promptfire-<version>.zip`
+   If your GitHub remote has another name, replace `origin` with that remote.
+
+8. Wait for `.github/workflows/release.yml` to publish the GitHub release.
+
+9. Update the GitHub release body if needed.
+
+   - tag: `v<version>`
+   - title: `Promptfire <version>`
+   - body: use `docs/releases/<version>-body.md`
+
+   The current workflow publishes the assets automatically. The body text
+   remains a manual follow-up unless the workflow is extended to read the body
+   file.
 
 ## Verification Checklist
 
@@ -90,9 +114,11 @@ git push origin v<version>
 - Preview opens and recompiles
 - Default output target executes successfully
 - Vault config reload still works
+- GitHub release includes `manifest.json`, `main.js`, `styles.css`, and
+  `versions.json`
 
 ## Notes
 
-- `dist/` is intentionally ignored and should not be committed
-- The release body file is meant for copy/paste into the Git hosting UI
-- The detailed release note file is meant to stay in-repo as historical documentation
+- The tag push is what triggers the GitHub release workflow
+- The release body file is the canonical source for the release page text
+- The detailed release note file stays in-repo as historical documentation

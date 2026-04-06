@@ -12,6 +12,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_ASSETS: |
+        manifest.json
+        main.js
+        styles.css
+        versions.json
 
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +29,11 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      - name: Verify release metadata and assets
+        run: node verify-release.mjs --require-tag
+        env:
+          PROMPTFIRE_RELEASE_ASSETS: ${{ env.RELEASE_ASSETS }}
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            manifest.json
-            main.js
-            styles.css
-            versions.json
+          files: ${{ env.RELEASE_ASSETS }}

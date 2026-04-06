@@ -2,6 +2,17 @@
 
 All notable changes to `Promptfire` will be documented in this file.
 
+## 1.0.0 - 2026-04-06
+
+- First stable release of `Promptfire`.
+- Added deterministic prompt compilation from notes, folders, outgoing links,
+  backlinks, and search results.
+- Added configurable extraction, ordering, budgeting, and output formatting per
+  workflow.
+- Added output targets for clipboard, notes, scratchpads, and deep links.
+- Published the standard Obsidian release assets: `manifest.json`, `main.js`,
+  `styles.css`, and `versions.json`.
+
 ## 0.1.0 - 2026-04-01
 
 - Initial public release of `Promptfire` for Obsidian.
