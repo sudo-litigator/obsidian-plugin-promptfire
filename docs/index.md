@@ -22,6 +22,8 @@ This is the main documentation index for `Promptfire`.
 
 - [RELEASE.md](../RELEASE.md)
 - [CHANGELOG.md](../CHANGELOG.md)
+- [docs/releases/1.0.0.md](releases/1.0.0.md)
+- [docs/releases/1.0.0-body.md](releases/1.0.0-body.md)
 - [docs/releases/0.1.0.md](releases/0.1.0.md)
 - [docs/releases/0.1.0-body.md](releases/0.1.0-body.md)
 
