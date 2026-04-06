@@ -38,6 +38,10 @@ Examples:
 - notes that link back to the active note
 - search results
 
+`Promptfire` deduplicates note paths across source definitions. If the same note
+is matched more than once, the earliest matching source definition in the
+profile keeps it and later matches are skipped.
+
 ### Transforms
 
 Transforms define how a source is reduced before it enters the final prompt.
@@ -123,6 +127,10 @@ You can use it to:
 - save a snapshot profile from the current state
 
 This is the fastest way to tune a profile before baking the settings in permanently.
+
+If multiple source definitions match the same note, the preview notes panel will
+call out those skipped duplicates so you can see which paths were claimed
+earlier in the profile.
 
 ## Snapshot Profiles
 

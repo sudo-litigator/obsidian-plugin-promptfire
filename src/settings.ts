@@ -1142,7 +1142,7 @@ export class PromptfireSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h3", { text: "Source Definitions" });
     containerEl.createEl("p", {
-      text: "Each source definition resolves one class of context. Order and priority both matter: manual preview order wins, then Promptfire sorts remaining sources by priority before budgeting.",
+      text: "Each source definition resolves one class of context. Order and priority both matter: earlier source definitions claim duplicate notes during collection, then manual preview order wins, then Promptfire sorts remaining sources by priority before budgeting.",
     });
 
     let sourceTypeToAdd: SourceDefinitionType = "file";
