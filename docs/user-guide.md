@@ -124,6 +124,45 @@ You can use it to:
 
 This is the fastest way to tune a profile before baking the settings in permanently.
 
+## Snapshot Profiles
+
+Snapshot profiles are created from the current preview state, not from a live
+"keep following whatever the original profile would do" link.
+
+When you save a snapshot profile, Promptfire preserves:
+
+- the currently enabled sources
+- the manual source order from the preview
+- the enabled and disabled template blocks
+- the selected output target
+- the selected output format
+
+It also converts the included preview sources into explicit `file` sources that
+point at the concrete note paths used in that preview run.
+
+That means a snapshot profile is useful when you want to keep a successful
+prompt build as a reusable starting point.
+
+It also means a snapshot stops tracking some dynamic behavior from the original
+profile. For example:
+
+- query-based or backlink-based source discovery is flattened into the specific
+  notes that were included when the snapshot was saved
+- source labels come from the included notes in that saved run
+- later changes to the original profile do not automatically flow into the
+  snapshot profile
+
+In short:
+
+- preview changes are temporary until you save them
+- a snapshot profile turns the current preview result into a reusable, fixed
+  profile
+- the snapshot is independent from the original profile after it is saved
+
+Use snapshot profiles when the current preview state is exactly the workflow you
+want to reuse later. Do not use them when you want to keep benefiting from
+dynamic source discovery in the original profile.
+
 ## When To Use Budgets
 
 Budgets matter when your vault contains too much context.
