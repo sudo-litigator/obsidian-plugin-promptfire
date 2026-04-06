@@ -168,3 +168,19 @@ Use case:
 5. Save the state as a snapshot profile.
 
 This is a good way to discover new profiles through actual usage instead of creating them all in settings first.
+
+What the snapshot keeps:
+
+- the exact enabled sources from that preview run
+- the preview order of those sources
+- the current template block toggles
+- the selected output target and output format
+
+What the snapshot does not keep dynamically:
+
+- future query results from the original profile
+- future backlink or folder expansion from the original profile
+- later edits to the original profile configuration
+
+In practice, think of a snapshot profile as "freeze this successful preview into
+a reusable profile" rather than "save a shortcut back to the original profile."
