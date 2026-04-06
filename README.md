@@ -121,7 +121,10 @@ You can also export the resolved settings back into that file from the command p
 - [Query syntax](docs/query-syntax.md)
 - [Examples](docs/examples.md)
 - [Architecture](docs/architecture.md)
+- [Development guide](docs/development.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
 - [Release process](RELEASE.md)
 - [Changelog](CHANGELOG.md)
 
@@ -137,6 +140,10 @@ Watch mode:
 ```bash
 npm run dev
 ```
+
+For contributor expectations, local vault testing, and documentation update
+guidance, see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/development.md](docs/development.md).
 
 <h2 align="center">Release Assets</h2>
 

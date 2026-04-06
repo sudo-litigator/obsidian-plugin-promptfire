@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Promptfire support and routing guide
+    url: https://github.com/sudo-litigator/obsidian-plugin-promptfire/blob/main/SUPPORT.md
+    about: Check where to ask questions, report bugs, or request features before opening an issue.
+  - name: Promptfire contributor guide
+    url: https://github.com/sudo-litigator/obsidian-plugin-promptfire/blob/main/CONTRIBUTING.md
+    about: Read local setup, build, testing, and documentation expectations for contributors.
