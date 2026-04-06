@@ -7,6 +7,7 @@ This is the main documentation index for `Promptfire`.
 - [README.md](../README.md)
 - [docs/user-guide.md](user-guide.md)
 - [docs/examples.md](examples.md)
+- [docs/development.md](development.md)
 
 ## Reference
 
@@ -14,6 +15,8 @@ This is the main documentation index for `Promptfire`.
 - [docs/query-syntax.md](query-syntax.md)
 - [docs/architecture.md](architecture.md)
 - [docs/troubleshooting.md](troubleshooting.md)
+- [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [SUPPORT.md](../SUPPORT.md)
 
 ## Release
 
